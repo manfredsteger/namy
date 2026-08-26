@@ -170,6 +170,7 @@ router.post('/remotes/:id/upload', async (req, res) => {
   let client: ReturnType<typeof createRemoteClient> | null = null;
   let fileProcessed = false;
   let hasError = false;
+  let uploadPromise: Promise<void> | null = null;
 
   bb.on('field', (name, val) => {
     if (name === 'targetPath') {
@@ -177,49 +178,55 @@ router.post('/remotes/:id/upload', async (req, res) => {
     }
   });
 
-  bb.on('file', async (name, fileStream, info) => {
-    if (!targetPath) {
-      hasError = true;
-      fileStream.resume(); // consume stream
-      if (!res.headersSent) res.status(400).json({ message: 'targetPath field must come before file' });
-      return;
-    }
-
-    try {
-      client = createRemoteClient(remote);
-      await client.connect();
-
-      const fullDestPath = `${remote.basePath}/${targetPath}`.replace(/\/+/g, '/');
-      const parts = fullDestPath.split('/');
-      const filename = parts.pop() || '';
-      const parentDir = parts.join('/');
-
-      if (parentDir) {
-        await client.mkdirRecursive(parentDir);
+  bb.on('file', (name, fileStream, info) => {
+    uploadPromise = (async () => {
+      if (!targetPath) {
+        hasError = true;
+        fileStream.resume(); // consume stream
+        if (!res.headersSent) res.status(400).json({ message: 'targetPath field must come before file' });
+        return;
       }
 
-      if (!overwrite) {
-        const check = await client.exists(fullDestPath);
-        if (check.exists) {
-          hasError = true;
-          fileStream.resume();
-          await client.disconnect();
-          if (!res.headersSent) res.status(409).json({ message: 'File already exists' });
-          return;
+      try {
+        client = createRemoteClient(remote);
+        await client.connect();
+
+        const fullDestPath = `${remote.basePath}/${targetPath}`.replace(/\/+/g, '/');
+        const parts = fullDestPath.split('/');
+        const filename = parts.pop() || '';
+        const parentDir = parts.join('/');
+
+        if (parentDir) {
+          await client.mkdirRecursive(parentDir);
         }
-      }
 
-      await client.uploadStream(fileStream, fullDestPath);
-      fileProcessed = true;
-      await client.disconnect();
-    } catch (err: any) {
-      hasError = true;
-      if (client) await client.disconnect().catch(() => {});
-      if (!res.headersSent) res.status(500).json({ message: 'Upload failed: ' + err.message });
-    }
+        if (!overwrite) {
+          const check = await client.exists(fullDestPath);
+          if (check.exists) {
+            hasError = true;
+            fileStream.resume();
+            await client.disconnect();
+            if (!res.headersSent) res.status(409).json({ message: 'File already exists' });
+            return;
+          }
+        }
+
+        await client.uploadStream(fileStream, fullDestPath);
+        fileProcessed = true;
+        await client.disconnect();
+      } catch (err: any) {
+        hasError = true;
+        if (client) await client.disconnect().catch(() => {});
+        if (!res.headersSent) res.status(500).json({ message: 'Upload failed: ' + err.message });
+      }
+    })();
   });
 
-  bb.on('finish', () => {
+  bb.on('finish', async () => {
+    if (uploadPromise) {
+      await uploadPromise;
+    }
+    
     if (!hasError && fileProcessed) {
       if (!res.headersSent) res.json({ message: 'Upload successful' });
     } else if (!hasError && !fileProcessed) {
