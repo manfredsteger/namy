@@ -1,6 +1,41 @@
 import { Translations } from './en';
 
 export const de: Translations = {
+  remotes: {
+    title: 'Server (Remotes)',
+    listTitle: 'Gespeicherte Server',
+    addBtn: 'Remote hinzufügen',
+    empty: 'Noch keine Server konfiguriert',
+    scanBtn: 'Bibliothek scannen',
+    confirmDelete: 'Möchten Sie diesen Server wirklich löschen?',
+    step1: 'Verbindung',
+    step2: 'Ordner wählen',
+    step3: 'Zusammenfassung',
+    name: 'Anzeigename',
+    mediaType: 'Medientyp',
+    protocol: 'Protokoll',
+    host: 'Host & Port',
+    username: 'Benutzername',
+    password: 'Password',
+    passwordUnchanged: '(Unverändert lassen, um beizubehalten)',
+    basePath: 'Basis-Pfad',
+    testBtn: 'Verbindung testen',
+    testSuccess: 'Verbindung erfolgreich',
+    testFailed: 'Verbindung fehlgeschlagen',
+    useFolderBtn: 'Diesen Ordner verwenden',
+    browseHint: 'Navigieren Sie zum Verzeichnis, das Ihre Dateien enthält, und klicken Sie auf "Diesen Ordner verwenden".',
+    emptyFolder: 'Ordner ist leer',
+    summary: 'Zusammenfassung',
+    type: {
+      series: 'Serien',
+      movies: 'Filme',
+      music: 'Musik',
+      other: 'Sonstiges'
+    },
+    libraryResults: '{{count}} Einträge gefunden',
+    seasons: 'Staffeln',
+    noResults: 'Keine Elemente in diesem Verzeichnis gefunden.'
+  },
   app: {
     title: 'Datei-Umbenenner Pro',
     description: 'Dateien per Drag & Drop umbenennen, Konventionen anwenden und das Ergebnis herunterladen.',

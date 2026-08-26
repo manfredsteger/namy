@@ -842,6 +842,13 @@ const App: React.FC = () => {
             >
               <SettingsIcon />
             </button>
+            <button 
+              onClick={() => setIsRemotesOpen(true)}
+              className="p-2 text-gray-400 hover:text-white bg-gray-900 rounded-lg hover:bg-gray-800 transition-colors border border-gray-800"
+              title={t('remotes.title')}
+            >
+              <Server className="w-5 h-5" />
+            </button>
             <LanguageSwitcher />
           </div>
         </header>
@@ -852,6 +859,8 @@ const App: React.FC = () => {
           ignoreList={ignoreList} 
           onIgnoreListChange={setIgnoreList} 
         />
+        
+        {isRemotesOpen && <RemotesModal onClose={() => setIsRemotesOpen(false)} />}
 
         
         {isRenaming && renameProgress && (
