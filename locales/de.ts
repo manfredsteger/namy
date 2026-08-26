@@ -117,6 +117,8 @@ export const de: Translations = {
     done: 'Fertig',
     downloadZip: 'ZIP Herunterladen',
     downloadScript: 'Bash-Skript Herunterladen (Lokal)',
+    cancel: 'Abbrechen',
+    close: 'Schließen',
   },
   sidebar: {
     title: 'Umbenennungs-Rezepte',

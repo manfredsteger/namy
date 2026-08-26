@@ -7,10 +7,10 @@ import { initDataDir } from './remotesManager';
 
 
 
-import { createServer as createViteServer } from 'vite';
+
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
@@ -21,6 +21,7 @@ async function start() {
   await initDataDir();
   
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

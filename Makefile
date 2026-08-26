@@ -74,7 +74,7 @@ install:
 
 dev:
 	@echo "$(YELLOW)Starting local development server on port $(DEV_PORT)...$(NC)"
-	npm run dev -- --port $(DEV_PORT)
+	PORT=$(DEV_PORT) npm run dev
 
 logs:
 	@echo "$(YELLOW)Attaching to logs...$(NC)"

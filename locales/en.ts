@@ -115,6 +115,8 @@ export const en = {
     done: 'Done',
     downloadZip: 'Download ZIP',
     downloadScript: 'Download Bash Script (Local)',
+    cancel: 'Cancel',
+    close: 'Close',
   },
   sidebar: {
     title: 'Renaming Conventions',
