@@ -227,6 +227,9 @@ router.post('/remotes/:id/upload', async (req, res) => {
         await client.uploadStream(fileStream, fullDestPath);
         fileProcessed = true;
         await client.disconnect();
+        
+        // Invalidate scan cache for this remote
+        scanCache.delete(remote.id);
       } catch (err: any) {
         hasError = true;
         if (client) await client.disconnect().catch(() => {});

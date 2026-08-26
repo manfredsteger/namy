@@ -1,4 +1,25 @@
 export const en = {
+  upload: {
+    title: 'Upload to Server',
+    selectRemote: 'Select Target Server',
+    scanning: 'Scanning library...',
+    localFile: 'Local File',
+    targetPath: 'Target Path',
+    status: 'Status',
+    matchId: 'ID Match',
+    matchNameHigh: 'High Confidence',
+    matchNameLow: 'Low Confidence',
+    matchNew: 'New',
+    skip: 'Skip',
+    overwrite: 'Overwrite',
+    conflict: 'File already exists',
+    skipped: 'Skipped',
+    noFiles: 'No files to upload.',
+    done: 'uploaded',
+    errors: 'errors',
+    uploading: 'Uploading...',
+    startBtn: 'Start Upload'
+  },
   remotes: {
     title: 'Servers (Remotes)',
     listTitle: 'Saved Servers',

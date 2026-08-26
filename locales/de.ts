@@ -1,6 +1,27 @@
 import { Translations } from './en';
 
 export const de: Translations = {
+  upload: {
+    title: 'Zum Server hochladen',
+    selectRemote: 'Ziel-Server auswählen',
+    scanning: 'Bibliothek wird gescannt...',
+    localFile: 'Lokale Datei',
+    targetPath: 'Zielpfad',
+    status: 'Status',
+    matchId: 'ID-Match',
+    matchNameHigh: 'Sicherer Match',
+    matchNameLow: 'Unsicherer Match',
+    matchNew: 'Neu',
+    skip: 'Überspringen',
+    overwrite: 'Überschreiben',
+    conflict: 'Datei existiert bereits',
+    skipped: 'Übersprungen',
+    noFiles: 'Keine Dateien zum Hochladen vorhanden.',
+    done: 'hochgeladen',
+    errors: 'Fehler',
+    uploading: 'Lade hoch...',
+    startBtn: 'Upload starten'
+  },
   remotes: {
     title: 'Server (Remotes)',
     listTitle: 'Gespeicherte Server',

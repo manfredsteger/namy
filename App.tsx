@@ -9,6 +9,8 @@ import Sidebar from './components/Sidebar';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import SettingsModal from './components/SettingsModal';
 import { RemotesModal } from './components/RemotesModal';
+import { UploadModal } from './components/UploadModal';
+import { Upload } from 'lucide-react';
 import { Server } from 'lucide-react';
 import RecipeBuilderModal from './components/RecipeBuilderModal';
 import { DownloadIcon, SettingsIcon, SparklesIcon } from './components/icons';
@@ -159,7 +161,16 @@ const App: React.FC = () => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isRemotesOpen, setIsRemotesOpen] = useState<boolean>(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
+  const [hasRemotes, setHasRemotes] = useState<boolean>(false);
   const [isVisualBuilderOpen, setIsVisualBuilderOpen] = useState<boolean>(false);
+
+    useEffect(() => {
+    fetch('/api/remotes')
+      .then(res => res.json())
+      .then(data => setHasRemotes(data.length > 0))
+      .catch(console.error);
+  }, [isRemotesOpen]);
 
   // Load saved conventions and ignore list from local storage on mount
   useEffect(() => {
@@ -860,7 +871,8 @@ const App: React.FC = () => {
           onIgnoreListChange={setIgnoreList} 
         />
         
-        {isRemotesOpen && <RemotesModal onClose={() => setIsRemotesOpen(false)} />}
+                {isRemotesOpen && <RemotesModal onClose={() => setIsRemotesOpen(false)} />}
+        {isUploadModalOpen && <UploadModal files={processedFiles} onClose={() => setIsUploadModalOpen(false)} />}
 
         
         {isRenaming && renameProgress && (
@@ -972,6 +984,16 @@ const App: React.FC = () => {
                 <span>{t('app.directMode.undoButton')}</span>
               </button>
             )}
+            {hasRemotes && (
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="flex items-center gap-2 bg-gray-800 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                <Upload className="w-5 h-5" />
+                <span>{t('upload.title')}</span>
+              </button>
+            )}
+
             {appMode === 'direct' ? (
               <button
                 onClick={handleApplyInPlace}
