@@ -1,9 +1,10 @@
 version: '3.8'
-
 services:
   app:
     build: .
     container_name: namy
     ports:
       - "3001:3000"
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
