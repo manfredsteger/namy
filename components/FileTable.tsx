@@ -1,6 +1,6 @@
 import React from 'react';
 import { ProcessedFile } from '../types';
-import { FileIcon, FolderIcon } from './icons';
+import { FileIcon, FolderIcon, AlertTriangleIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
 
 interface FileTableProps {
@@ -44,7 +44,7 @@ const FileTable: React.FC<FileTableProps> = ({ files }) => {
           </thead>
           <tbody>
             {files.map((file) => (
-              <tr key={file.id} className="border-b border-gray-800 hover:bg-gray-800/50">
+              <tr key={file.id} className={`border-b border-gray-800 hover:bg-gray-800/50 ${file.hasCollision ? 'bg-red-900/10' : ''}`}>
                 <td className="px-6 py-4 font-mono">
                   <div className="flex items-center">
                     <span style={{ paddingLeft: `${file.depth * 20}px` }}></span>
@@ -53,10 +53,18 @@ const FileTable: React.FC<FileTableProps> = ({ files }) => {
                   </div>
                 </td>
                 <td className="px-6 py-4 font-mono">
-                  <div className="flex items-center text-primary-500">
+                  <div className={`flex items-center ${file.hasCollision ? 'text-red-400' : 'text-primary-500'}`}>
                     <span style={{ paddingLeft: `${file.depth * 20}px` }}></span>
                      {file.isDirectory ? <FolderIcon className="mr-2 flex-shrink-0" /> : <FileIcon className="mr-2 flex-shrink-0" />}
-                    <span className="truncate">{getFileName(file.newPath)}</span>
+                    <span className="truncate" title={file.hasCollision ? t('fileTable.collisionWarning') : ''}>{getFileName(file.newPath)}</span>
+                    {file.hasCollision && (
+                      <div className="ml-2 relative group flex-shrink-0">
+                        <AlertTriangleIcon className="text-red-500" />
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-48 p-2 bg-gray-900 border border-red-500 text-xs text-red-200 rounded shadow-lg z-10 text-center pointer-events-none">
+                          {t('fileTable.collisionWarning')}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right font-mono text-gray-600">

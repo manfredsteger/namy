@@ -9,7 +9,7 @@ import Sidebar from './components/Sidebar';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import SettingsModal from './components/SettingsModal';
 import RecipeBuilderModal from './components/RecipeBuilderModal';
-import { DownloadIcon, SettingsIcon } from './components/icons';
+import { DownloadIcon, SettingsIcon, SparklesIcon } from './components/icons';
 import { ProcessedFile, Convention, Rule } from './types';
 import { generateRenameScript } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
@@ -143,6 +143,16 @@ const App: React.FC = () => {
   const [ignoreList, setIgnoreList] = useState<string>('.DS_Store\nthumbs.db');
   const [providerCode, setProviderCode] = useState<string>('');
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'info' | 'success' } | null>(null);
+  
+  
+  const [appMode, setAppMode] = useState<'upload' | 'direct'>('upload');
+  const [rootHandle, setRootHandle] = useState<any>(null);
+  const [undoHistory, setUndoHistory] = useState<{ originalPath: string, newPath: string }[] | null>(null);
+
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameProgress, setRenameProgress] = useState<{current: number, total: number, message: string} | null>(null);
+  const [renameResult, setRenameResult] = useState<{success: number, skipped: number, errors: string[]} | null>(null);
+
   const { t } = useTranslation();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -203,7 +213,7 @@ const App: React.FC = () => {
       .map(p => p.trim().toLowerCase())
       .filter(p => p.length > 0);
 
-    return files
+    const result = files
       .filter(file => {
         const path = file.originalPath.toLowerCase();
         // If any part of the ignore list is in the path, it's ignored.
@@ -220,51 +230,26 @@ const App: React.FC = () => {
           return { ...file, newPath: file.originalPath };
         }
       });
+
+    // Detect Collisions
+    const newPathCounts = new Map<string, number>();
+    for (const f of result) {
+      if (!f.isDirectory) {
+        newPathCounts.set(f.newPath, (newPathCounts.get(f.newPath) || 0) + 1);
+      }
+    }
+
+    for (const f of result) {
+      if (!f.isDirectory) {
+        f.hasCollision = (newPathCounts.get(f.newPath) || 0) > 1;
+      }
+    }
+
+    return result;
   }, [files, script, ignoreList, providerCode]);
   
-  const handleFilesProcessed = useCallback((droppedFiles: File[]) => {
-    setIsProcessing(true);
-    setError(null);
-    setScanMessage(null);
-
-    // Using setTimeout to allow UI to update to "Processing..."
-    setTimeout(() => {
-      const processed: ProcessedFile[] = [];
-      const directoryPaths = new Set<string>();
-
-      droppedFiles.forEach(file => {
-        // 'webkitRelativePath' is the key to getting folder structure
-        const path = (file as any).webkitRelativePath || file.name;
-        const parts = path.split('/');
-
-        // Create directory entries if they don't exist
-        for (let i = 1; i < parts.length; i++) {
-          const dirPath = parts.slice(0, i).join('/');
-          if (!directoryPaths.has(dirPath)) {
-            processed.push({
-              id: uuidv4(),
-              originalPath: dirPath,
-              newPath: dirPath,
-              file: null,
-              isDirectory: true,
-              size: 0,
-              depth: i - 1,
-            });
-            directoryPaths.add(dirPath);
-          }
-        }
-
-        processed.push({
-          id: uuidv4(),
-          originalPath: path,
-          newPath: path,
-          file: file,
-          isDirectory: false,
-          size: file.size,
-          depth: parts.length - 1,
-        });
-      });
-      
+  
+  const finalizeFiles = useCallback((processed: ProcessedFile[]) => {
       // Sort to ensure directories appear before their files
       processed.sort((a, b) => a.originalPath.localeCompare(b.originalPath));
 
@@ -345,8 +330,128 @@ const App: React.FC = () => {
 
       setFiles(processed);
       setIsProcessing(false);
-    }, 100);
   }, [t]);
+
+  const scanDirectory = async (dirHandle: any, path: string = '', processed: ProcessedFile[] = [], dirPaths: Set<string> = new Set()) => {
+    for await (const entry of dirHandle.values()) {
+      const fullPath = path ? `${path}/${entry.name}` : entry.name;
+      const parts = fullPath.split('/');
+      
+      if (entry.kind === 'file') {
+        // Ensure directories are created
+        for (let i = 1; i < parts.length; i++) {
+          const dirPath = parts.slice(0, i).join('/');
+          if (!dirPaths.has(dirPath)) {
+            processed.push({
+              id: uuidv4(),
+              originalPath: dirPath,
+              newPath: dirPath,
+              file: null,
+              isDirectory: true,
+              size: 0,
+              depth: i - 1,
+            });
+            dirPaths.add(dirPath);
+          }
+        }
+        
+        const file = await entry.getFile();
+        processed.push({
+          id: uuidv4(),
+          originalPath: fullPath,
+          newPath: fullPath,
+          file: null, // Minimal memory usage
+          isDirectory: false,
+          size: file.size,
+          depth: parts.length - 1,
+          handle: entry,
+          parentHandle: dirHandle,
+        });
+      } else if (entry.kind === 'directory') {
+          if (!dirPaths.has(fullPath)) {
+            processed.push({
+              id: uuidv4(),
+              originalPath: fullPath,
+              newPath: fullPath,
+              file: null,
+              isDirectory: true,
+              size: 0,
+              depth: parts.length - 1,
+              handle: entry,
+              parentHandle: dirHandle,
+            });
+            dirPaths.add(fullPath);
+          }
+          await scanDirectory(entry, fullPath, processed, dirPaths);
+      }
+    }
+    return processed;
+  };
+
+  const handleDirectorySelected = useCallback(async (dirHandle: any) => {
+    setIsProcessing(true);
+    setError(null);
+    setScanMessage(null);
+    setAppMode('direct');
+    setRootHandle(dirHandle);
+    
+    try {
+        const processed = await scanDirectory(dirHandle);
+        finalizeFiles(processed);
+    } catch (e) {
+        console.error('Scan error:', e);
+        setError('Error scanning directory');
+        setIsProcessing(false);
+    }
+  }, [finalizeFiles]);
+
+  const handleFilesProcessed = useCallback((droppedFiles: File[]) => {
+    setAppMode('upload');
+    setIsProcessing(true);
+    setError(null);
+    setScanMessage(null);
+
+    // Using setTimeout to allow UI to update to "Processing..."
+    setTimeout(() => {
+      const processed: ProcessedFile[] = [];
+      const directoryPaths = new Set<string>();
+
+      droppedFiles.forEach(file => {
+        // 'webkitRelativePath' is the key to getting folder structure
+        const path = (file as any).webkitRelativePath || file.name;
+        const parts = path.split('/');
+
+        // Create directory entries if they don't exist
+        for (let i = 1; i < parts.length; i++) {
+          const dirPath = parts.slice(0, i).join('/');
+          if (!directoryPaths.has(dirPath)) {
+            processed.push({
+              id: uuidv4(),
+              originalPath: dirPath,
+              newPath: dirPath,
+              file: null,
+              isDirectory: true,
+              size: 0,
+              depth: i - 1,
+            });
+            directoryPaths.add(dirPath);
+          }
+        }
+
+        processed.push({
+          id: uuidv4(),
+          originalPath: path,
+          newPath: path,
+          file: file,
+          isDirectory: false,
+          size: file.size,
+          depth: parts.length - 1,
+        });
+      });
+      
+      finalizeFiles(processed);
+    }, 100);
+  }, [finalizeFiles]);
 
   const handleGenerateWithAI = useCallback(async (prompt: string) => {
     setIsAiLoading(true);
@@ -389,6 +494,248 @@ const App: React.FC = () => {
     if (defaultConventions.some(c => c.id === id)) return;
     setSavedConventions(prev => prev.filter(c => c.id !== id));
   }, []);
+
+  
+  
+  const handleApplyInPlace = async () => {
+    if (!rootHandle || processedFiles.length === 0) return;
+    
+    const filesToRename = processedFiles.filter(f => !f.isDirectory && f.originalPath !== f.newPath && !f.hasCollision);
+    if (filesToRename.length === 0) {
+       setError("No files to rename or all have collisions.");
+       return;
+    }
+
+    if (!window.confirm(t('app.directMode.confirmMessage') + ` (${filesToRename.length} files)`)) {
+       return;
+    }
+
+    setIsRenaming(true);
+    let successCount = 0;
+    let skipCount = 0;
+    let errors: string[] = [];
+    const successfulRenames: {originalPath: string, newPath: string}[] = [];
+
+    // Helper to get or create directory handle recursively
+    const getDirectoryHandleRecursively = async (baseHandle: any, pathParts: string[]) => {
+       let currentHandle = baseHandle;
+       for (const part of pathParts) {
+           if (!part) continue;
+           currentHandle = await currentHandle.getDirectoryHandle(part, { create: true });
+       }
+       return currentHandle;
+    };
+
+    for (let i = 0; i < filesToRename.length; i++) {
+        const file = filesToRename[i];
+        setRenameProgress({ current: i + 1, total: filesToRename.length, message: file.originalPath });
+        
+        try {
+            const newPathParts = file.newPath.split('/');
+            const newName = newPathParts.pop() || '';
+            const newDirParts = newPathParts;
+            
+            const origPathParts = file.originalPath.split('/');
+            origPathParts.pop(); // remove filename
+            
+            const targetDirHandle = await getDirectoryHandleRecursively(rootHandle, newDirParts);
+            
+            // Check if file already exists in target
+            try {
+                await targetDirHandle.getFileHandle(newName, { create: false });
+                // File exists, skip
+                skipCount++;
+                errors.push(`Skipped: ${newName} already exists.`);
+                continue;
+            } catch (e) {
+                // Not found, we can proceed
+            }
+            
+            if (origPathParts.join('/') === newDirParts.join('/')) {
+                // Same directory, just rename
+                if (typeof file.handle.move === 'function') {
+                    await file.handle.move(newName);
+                    successCount++;
+                    successfulRenames.push({ originalPath: file.originalPath, newPath: file.newPath });
+                } else {
+                    throw new Error("move API not supported on this browser");
+                }
+            } else {
+                // Cross-directory move
+                try {
+                    if (typeof file.handle.move === 'function') {
+                        await file.handle.move(targetDirHandle, newName);
+                        successCount++;
+                        successfulRenames.push({ originalPath: file.originalPath, newPath: file.newPath });
+                    } else {
+                        throw new Error("move API not supported on this browser");
+                    }
+                } catch (e) {
+                    // Fallback to copy & delete
+                    console.warn(`Fallback copy for ${file.originalPath}`);
+                    const src = await file.handle.getFile();
+                    const dest = await targetDirHandle.getFileHandle(newName, { create: true });
+                    const w = await dest.createWritable();
+                    await src.stream().pipeTo(w);
+                    await file.parentHandle.removeEntry(file.originalPath.split('/').pop());
+                    successCount++;
+                    successfulRenames.push({ originalPath: file.originalPath, newPath: file.newPath });
+                }
+            }
+        } catch (err: any) {
+            console.error(`Error renaming ${file.originalPath}:`, err);
+            errors.push(`Failed: ${file.originalPath} (${err.message})`);
+        }
+    }
+    
+    // Clean up empty directories
+    const dirs = processedFiles.filter(f => f.isDirectory).sort((a, b) => b.depth - a.depth);
+    for (const d of dirs) {
+        try {
+            const parts = d.originalPath.split('/');
+            const dirName = parts.pop() || '';
+            let parentHandle = rootHandle;
+            if (parts.length > 0) {
+                 parentHandle = await getDirectoryHandleRecursively(rootHandle, parts);
+            }
+            const dirHandle = await parentHandle.getDirectoryHandle(dirName, { create: false });
+            
+            let isEmpty = true;
+            for await (const _ of dirHandle.values()) {
+                isEmpty = false;
+                break;
+            }
+            if (isEmpty) {
+                await parentHandle.removeEntry(dirName);
+            }
+        } catch (e) {
+           // Ignore
+        }
+    }
+
+    setRenameResult({ success: successCount, skipped: skipCount, errors });
+    if (successfulRenames.length > 0) {
+        setUndoHistory(successfulRenames);
+    } else {
+        setUndoHistory(null);
+    }
+    
+    // Rescan
+    try {
+        const processed = await scanDirectory(rootHandle);
+        finalizeFiles(processed);
+    } catch(e) {
+    }
+
+    setIsRenaming(false);
+    setRenameProgress(null);
+  };
+
+  const handleUndoDirect = async () => {
+      if (!rootHandle || !undoHistory || undoHistory.length === 0) return;
+      
+      setIsRenaming(true);
+      let successCount = 0;
+      let skipCount = 0;
+      let errors: string[] = [];
+
+      const getDirectoryHandleRecursively = async (baseHandle: any, pathParts: string[]) => {
+         let currentHandle = baseHandle;
+         for (const part of pathParts) {
+             if (!part) continue;
+             currentHandle = await currentHandle.getDirectoryHandle(part, { create: true });
+         }
+         return currentHandle;
+      };
+
+      // Undo in reverse order
+      for (let i = undoHistory.length - 1; i >= 0; i--) {
+          const { originalPath, newPath } = undoHistory[i];
+          setRenameProgress({ current: undoHistory.length - i, total: undoHistory.length, message: `Undoing: ${newPath}` });
+          
+          try {
+              const srcPathParts = newPath.split('/');
+              const srcName = srcPathParts.pop() || '';
+              const destPathParts = originalPath.split('/');
+              const destName = destPathParts.pop() || '';
+              
+              const srcDirHandle = await getDirectoryHandleRecursively(rootHandle, srcPathParts);
+              const destDirHandle = await getDirectoryHandleRecursively(rootHandle, destPathParts);
+              
+              const srcFileHandle = await srcDirHandle.getFileHandle(srcName, { create: false });
+              
+              try {
+                  await destDirHandle.getFileHandle(destName, { create: false });
+                  skipCount++;
+                  errors.push(`Skipped: ${destName} already exists.`);
+                  continue;
+              } catch(e) {}
+              
+              if (srcPathParts.join('/') === destPathParts.join('/')) {
+                  if (typeof srcFileHandle.move === 'function') {
+                      await srcFileHandle.move(destName);
+                      successCount++;
+                  } else {
+                       throw new Error("move API not supported");
+                  }
+              } else {
+                  try {
+                      if (typeof srcFileHandle.move === 'function') {
+                          await srcFileHandle.move(destDirHandle, destName);
+                          successCount++;
+                      } else {
+                          throw new Error("move API not supported");
+                      }
+                  } catch(e) {
+                      const srcFile = await srcFileHandle.getFile();
+                      const destHandle = await destDirHandle.getFileHandle(destName, { create: true });
+                      const w = await destHandle.createWritable();
+                      await srcFile.stream().pipeTo(w);
+                      await srcDirHandle.removeEntry(srcName);
+                      successCount++;
+                  }
+              }
+          } catch (err: any) {
+              console.error(`Error undoing ${newPath}:`, err);
+              errors.push(`Failed to undo ${newPath}: ${err.message}`);
+          }
+      }
+      
+      // Cleanup empty dirs, we scan the whole root handle for empty dirs?
+      // Since it's hard to track all created dirs during undo, we just rescan and do nothing, or we can use the same logic if we tracked it.
+      // A quick cleanup:
+      const dirs = processedFiles.filter(f => f.isDirectory).sort((a, b) => b.depth - a.depth);
+      for (const d of dirs) {
+          try {
+              const parts = d.originalPath.split('/');
+              const dirName = parts.pop() || '';
+              let parentHandle = rootHandle;
+              if (parts.length > 0) {
+                   parentHandle = await getDirectoryHandleRecursively(rootHandle, parts);
+              }
+              const dirHandle = await parentHandle.getDirectoryHandle(dirName, { create: false });
+              let isEmpty = true;
+              for await (const _ of dirHandle.values()) {
+                  isEmpty = false;
+                  break;
+              }
+              if (isEmpty) {
+                  await parentHandle.removeEntry(dirName);
+              }
+          } catch (e) {}
+      }
+      
+      setUndoHistory(null); // Clear undo history
+      setRenameResult({ success: successCount, skipped: skipCount, errors });
+      
+      try {
+          const processed = await scanDirectory(rootHandle);
+          finalizeFiles(processed);
+      } catch(e) {}
+      
+      setIsRenaming(false);
+      setRenameProgress(null);
+  };
 
   const handleDownloadZip = useCallback(async () => {
     if (processedFiles.length === 0) return;
@@ -503,6 +850,46 @@ const App: React.FC = () => {
           onIgnoreListChange={setIgnoreList} 
         />
 
+        
+        {isRenaming && renameProgress && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+             <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+               <h3 className="text-xl font-bold text-gray-100 mb-4">{t('app.directMode.progressTitle')}</h3>
+               <div className="w-full bg-gray-800 rounded-full h-4 mb-2 overflow-hidden">
+                 <div className="bg-primary-500 h-4 rounded-full transition-all duration-300" style={{ width: `${(renameProgress.current / renameProgress.total) * 100}%` }}></div>
+               </div>
+               <p className="text-sm text-gray-400 text-center mb-1">
+                 {renameProgress.current} / {renameProgress.total}
+               </p>
+               <p className="text-xs text-gray-500 text-center truncate">
+                 {renameProgress.message}
+               </p>
+             </div>
+           </div>
+        )}
+
+        {renameResult && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+             <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl max-h-[80vh] flex flex-col">
+               <h3 className="text-xl font-bold text-green-400 mb-2">Done!</h3>
+               <p className="text-gray-300 mb-4">
+                 {t('app.directMode.successMessage').replace('{{count}}', String(renameResult.success)).replace('{{skipped}}', String(renameResult.skipped))}
+               </p>
+               {renameResult.errors.length > 0 && (
+                 <div className="flex-1 overflow-y-auto bg-gray-950 p-3 rounded-lg border border-red-900/50 mb-4">
+                   <p className="text-red-400 text-sm font-bold mb-2">Errors:</p>
+                   <ul className="text-xs text-red-300/80 space-y-1 font-mono">
+                     {renameResult.errors.map((err, i) => <li key={i}>{err}</li>)}
+                   </ul>
+                 </div>
+               )}
+               <button onClick={() => setRenameResult(null)} className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-3 px-4 rounded-lg transition-colors">
+                 {t('app.directMode.close')}
+               </button>
+             </div>
+           </div>
+        )}
+
         <RecipeBuilderModal
           isOpen={isVisualBuilderOpen}
           onClose={() => setIsVisualBuilderOpen(false)}
@@ -522,7 +909,7 @@ const App: React.FC = () => {
         <div className={`flex-grow overflow-y-auto ${files.length === 0 ? 'flex items-center justify-center' : 'flex flex-col'}`}>
           {files.length === 0 ? (
             <div className="w-full max-w-4xl animate-fade-in-up">
-              <Dropzone onFilesProcessed={handleFilesProcessed} isProcessing={isProcessing} />
+              <Dropzone onFilesProcessed={handleFilesProcessed} isProcessing={isProcessing} onDirectorySelected={handleDirectorySelected} />
             </div>
           ) : (
             <>
@@ -552,6 +939,8 @@ const App: React.FC = () => {
             >
               {t('app.startOver')}
             </button>
+            
+            
             <button
               onClick={handleDownloadScript}
               className="flex items-center gap-2 bg-gray-800 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-700 transition-colors"
@@ -559,23 +948,56 @@ const App: React.FC = () => {
               <DownloadIcon />
               <span>{t('common.downloadScript')}</span>
             </button>
-            <button
-              onClick={handleDownloadZip}
-              disabled={isZipping}
-              className="flex items-center gap-2 bg-primary-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-primary-600 transition-colors disabled:bg-gray-600"
-            >
-              {isZipping ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  <span>{t('app.zipping')}</span>
-                </>
-              ) : (
-                <>
-                  <DownloadIcon />
-                  <span>{t('app.downloadZip')}</span>
-                </>
-              )}
-            </button>
+            {appMode === 'direct' && undoHistory && undoHistory.length > 0 && (
+              <button
+                onClick={handleUndoDirect}
+                disabled={isRenaming}
+                className="flex items-center gap-2 bg-amber-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-amber-600 transition-colors disabled:bg-gray-600"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                <span>{t('app.directMode.undoButton')}</span>
+              </button>
+            )}
+            {appMode === 'direct' ? (
+              <button
+                onClick={handleApplyInPlace}
+                disabled={isRenaming}
+                className="flex items-center gap-2 bg-primary-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-primary-600 transition-colors disabled:bg-gray-600"
+              >
+                {isRenaming ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>{t('app.renaming')}</span>
+                  </>
+                ) : (
+                  <>
+                    <SparklesIcon />
+                    <span>{t('app.renameDirectly')}</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleDownloadZip}
+                disabled={isZipping}
+                className="flex items-center gap-2 bg-primary-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-primary-600 transition-colors disabled:bg-gray-600"
+              >
+                {isZipping ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>{t('app.zipping')}</span>
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon />
+                    <span>{t('app.downloadZip')}</span>
+                  </>
+                )}
+              </button>
+            )}
+
           </footer>
         )}
       </main>

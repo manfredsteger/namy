@@ -16,11 +16,27 @@ export const en = {
     },
     zipping: 'Zipping...',
     downloadZip: 'Download as .zip',
+    renameDirectly: 'Rename Directly (In-Place)',
+    renaming: 'Renaming...',
     startOver: 'Start Over',
     scan: {
       seriesDetected: 'TV Series detected! Auto-selected "Jellyfin Series" recipe.',
       movieDetected: 'Movies detected! Auto-selected "Jellyfin Movies" recipe.',
       titleExtracted: 'Found potential title: '
+    },
+    directMode: {
+      confirmTitle: 'Rename Files Directly',
+      confirmMessage: 'Are you sure you want to rename these files directly on your hard drive? This action cannot be undone and no copies will be created.',
+      confirmButton: 'Yes, Rename Now',
+      cancelButton: 'Cancel',
+      progressTitle: 'Renaming Files...',
+      successMessage: 'Successfully renamed {{count}} files. {{skipped}} skipped.',
+      errorMessage: 'Errors occurred while renaming {{count}} files.',
+      close: 'Close',
+      browserNotSupported: 'Only available in Chrome/Edge',
+      openFolder: 'Open Folder & Rename Directly',
+      undoButton: 'Undo Last Rename',
+      undoProgressTitle: 'Undoing...'
     }
   },
   settings: {
@@ -96,7 +112,8 @@ export const en = {
   fileTable: {
     originalPath: 'Original Path',
     newPath: 'Preview New Path',
-    size: 'Size'
+    size: 'Size',
+    collisionWarning: 'Warning: Multiple files resolve to this same path. This will cause overwrites when zipping!'
   },
   conventions: {
     webSafe: 'Web Safe (lowercase, hyphenated)',

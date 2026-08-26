@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name: file-renamer-pro
+    container_name: namy
     ports:
-      - "3000:3000"
+      - "3001:3000"
     restart: unless-stopped

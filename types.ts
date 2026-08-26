@@ -7,6 +7,9 @@ export interface ProcessedFile {
   isDirectory: boolean;
   size: number;
   depth: number;
+  hasCollision?: boolean;
+  handle?: any; // FileSystemFileHandle | FileSystemDirectoryHandle
+  parentHandle?: any; // FileSystemDirectoryHandle
 }
 
 export type RuleType = 

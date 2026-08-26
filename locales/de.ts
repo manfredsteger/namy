@@ -18,11 +18,27 @@ export const de: Translations = {
     },
     zipping: 'Zippe...',
     downloadZip: 'Als .zip herunterladen',
+    renameDirectly: 'Jetzt direkt umbenennen',
+    renaming: 'Benenne um...',
     startOver: 'Neu starten',
     scan: {
       seriesDetected: 'TV-Serien erkannt! Rezept "Jellyfin Serien" automatisch ausgewählt.',
       movieDetected: 'Filme erkannt! Rezept "Jellyfin Filme" automatisch ausgewählt.',
       titleExtracted: 'Möglicher Titel gefunden: '
+    },
+    directMode: {
+      confirmTitle: 'Dateien direkt umbenennen',
+      confirmMessage: 'Sind Sie sicher, dass Sie diese Dateien direkt auf Ihrer Festplatte umbenennen möchten? Dies kann nicht rückgängig gemacht werden und es werden keine Kopien erstellt.',
+      confirmButton: 'Ja, jetzt umbenennen',
+      cancelButton: 'Abbrechen',
+      progressTitle: 'Dateien werden umbenannt...',
+      successMessage: 'Erfolgreich {{count}} Dateien umbenannt. {{skipped}} übersprungen.',
+      errorMessage: 'Beim Umbenennen von {{count}} Dateien sind Fehler aufgetreten.',
+      close: 'Schließen',
+      browserNotSupported: 'Nur in Chrome/Edge verfügbar',
+      openFolder: 'Ordner öffnen – direkt umbenennen',
+      undoButton: 'Letzte Umbenennung rückgängig machen',
+      undoProgressTitle: 'Mache rückgängig...'
     }
   },
   settings: {
@@ -98,7 +114,8 @@ export const de: Translations = {
   fileTable: {
     originalPath: 'Originalpfad',
     newPath: 'Vorschau neuer Pfad',
-    size: 'Größe'
+    size: 'Größe',
+    collisionWarning: 'Warnung: Mehrere Dateien haben denselben neuen Pfad. Dies führt beim Zippen zum Überschreiben!'
   },
   conventions: {
     webSafe: 'Web-sicher (Kleinbuchstaben, Bindestriche)',
