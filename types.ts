@@ -45,3 +45,30 @@ export interface Convention {
   requiresProviderCode?: boolean;
   rules?: Rule[];
 }
+
+export interface RemoteConfig {
+  id: string;
+  name: string;
+  protocol: 'sftp' | 'ftp';
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  basePath: string;
+  mediaType: 'series' | 'movies' | 'music' | 'other';
+}
+
+export interface RemoteFileInfo {
+  name: string;
+  isDirectory: boolean;
+  size: number;
+}
+
+export interface ScanResult {
+  folderName: string;
+  tmdbId?: string;
+  imdbId?: string;
+  title?: string;
+  year?: string;
+  seasons?: string[];
+}

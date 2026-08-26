@@ -67,6 +67,19 @@ router.post('/remotes/test', async (req, res) => {
   }
 });
 
+router.post('/remotes/browse', async (req, res) => {
+  const { path: browsePath, ...config } = req.body;
+  const client = createRemoteClient(config as RemoteConfig);
+  try {
+    await client.connect();
+    const list = await client.list(browsePath || config.basePath || '/');
+    await client.disconnect();
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ message: 'Error browsing remote: ' + err.message });
+  }
+});
+
 router.post('/remotes/:id/browse', async (req, res) => {
   const remote = await getRemote(req.params.id);
   if (!remote) return res.status(404).json({ message: 'Remote not found' });

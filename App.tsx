@@ -8,6 +8,8 @@ import FileTable from './components/FileTable';
 import Sidebar from './components/Sidebar';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import SettingsModal from './components/SettingsModal';
+import { RemotesModal } from './components/RemotesModal';
+import { Server } from 'lucide-react';
 import RecipeBuilderModal from './components/RecipeBuilderModal';
 import { DownloadIcon, SettingsIcon, SparklesIcon } from './components/icons';
 import { ProcessedFile, Convention, Rule } from './types';
@@ -156,6 +158,7 @@ const App: React.FC = () => {
   const { t } = useTranslation();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isRemotesOpen, setIsRemotesOpen] = useState<boolean>(false);
   const [isVisualBuilderOpen, setIsVisualBuilderOpen] = useState<boolean>(false);
 
   // Load saved conventions and ignore list from local storage on mount

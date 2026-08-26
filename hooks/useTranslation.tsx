@@ -12,7 +12,7 @@ const translations: Record<Language, Translations> = {
 interface TranslationContextType {
   language: Language;
   setLanguage: (language: Language) => void;
-  t: (key: string) => string;
+  t: (key: string, variablesOrFallback?: Record<string, any> | string) => string;
 }
 
 const TranslationContext = createContext<TranslationContextType | undefined>(undefined);
@@ -20,21 +20,35 @@ const TranslationContext = createContext<TranslationContextType | undefined>(und
 export const TranslationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguage] = useState<Language>('de');
 
-  const t = useMemo(() => (key: string): string => {
+  const t = useMemo(() => (key: string, variablesOrFallback?: Record<string, any> | string): string => {
+    const variables = typeof variablesOrFallback === 'object' ? variablesOrFallback : undefined;
     const keys = key.split('.');
     let result: any = translations[language];
+
     for (const k of keys) {
       result = result?.[k];
       if (result === undefined) {
-        // Fallback to English if translation is missing
-        let fallbackResult: any = translations['en'];
-        for (const fk of keys) {
-            fallbackResult = fallbackResult?.[fk];
-        }
-        return fallbackResult || key;
+        break;
       }
     }
-    return result || key;
+    
+    if (result === undefined) {
+      let fallbackResult: any = translations['en'];
+      for (const fk of keys) {
+        fallbackResult = fallbackResult?.[fk];
+      }
+      result = fallbackResult;
+    }
+
+    let finalStr = typeof result === 'string' ? result : key;
+    
+    if (variables && typeof finalStr === 'string') {
+      for (const [k, v] of Object.entries(variables)) {
+        finalStr = finalStr.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), String(v));
+      }
+    }
+    
+    return finalStr;
   }, [language]);
 
   const value = {
