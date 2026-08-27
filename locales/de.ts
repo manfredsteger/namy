@@ -129,6 +129,9 @@ export const de: Translations = {
     }
   },
   common: {
+    save: 'Speichern',
+    edit: 'Bearbeiten',
+    delete: 'Löschen',
     done: 'Fertig',
     downloadZip: 'ZIP Herunterladen',
     downloadScript: 'Bash-Skript Herunterladen (Lokal)',

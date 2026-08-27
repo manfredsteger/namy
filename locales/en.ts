@@ -127,6 +127,9 @@ export const en = {
     }
   },
   common: {
+    save: 'Save',
+    edit: 'Edit',
+    delete: 'Delete',
     done: 'Done',
     downloadZip: 'Download ZIP',
     downloadScript: 'Download Bash Script (Local)',

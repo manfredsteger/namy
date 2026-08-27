@@ -58,8 +58,7 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [matches, setMatches] = useState<MatchResult[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [manualIds, setManualIds] = useState<Record<string, { id: string, title?: string, year?: string | null } | string>>({});
-  const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
+  const [manualIds, setManualIds] = useState<Record<string, string>>({});
   const [uploadStats, setUploadStats] = useState({ total: 0, done: 0, error: 0, skipped: 0 });
 
   useEffect(() => {
@@ -106,58 +105,22 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
     
     // Calculate matches
     const newMatches: MatchResult[] = files.filter(f => !f.isDirectory).map(f => {
-      const parts = f.newPath.split('/');
-      const folderNamePart = parts.length > 1 ? parts[0] : f.newPath;
-      const name = parts.pop() || f.newPath;
+      const name = f.newPath.split('/').pop() || f.newPath;
       
       // Extract info
-      const tmdbMatch = folderNamePart.match(/\[tmdbid-(.*?)\]/);
-      const imdbMatch = folderNamePart.match(/\[imdbid-(.*?)\]/);
-      let tmdbId = tmdbMatch ? tmdbMatch[1] : null;
-      let imdbId = imdbMatch ? imdbMatch[1] : null;
+      const tmdbMatch = name.match(/\[tmdbid-(.*?)\]/);
+      const imdbMatch = name.match(/\[imdbid-(.*?)\]/);
+      const tmdbId = tmdbMatch ? tmdbMatch[1] : null;
+      const imdbId = imdbMatch ? imdbMatch[1] : null;
       
       const seasonMatch = name.match(/S(\d+)E\d+/i);
       const seasonNum = seasonMatch ? parseInt(seasonMatch[1], 10) : null;
       
-      let title = folderNamePart.replace(/\[tmdbid-.*?\]/gi, '').replace(/\[imdbid-.*?\]/gi, '').replace(/\(\d{4}\)/g, '');
-      if (seasonMatch && title.includes(seasonMatch[0])) {
+      let title = name.replace(/\[tmdbid-.*?\]/gi, '').replace(/\[imdbid-.*?\]/gi, '').replace(/\(\d{4}\)/g, '');
+      if (seasonMatch) {
         title = title.substring(0, title.indexOf(seasonMatch[0]));
       }
       title = title.replace(/[._]/g, ' ').trim();
-      
-      const existingYearMatch = folderNamePart.match(/\(\d{4}\)/);
-      let year = existingYearMatch ? existingYearMatch[0] : '';
-
-      const originalTitle = title;
-      const manualVal = manualIds[originalTitle];
-      let manualIdStr = '';
-      
-      if (manualVal) {
-         if (typeof manualVal === 'string') {
-           manualIdStr = manualVal;
-         } else {
-           manualIdStr = manualVal.id;
-           if (manualVal.title) {
-             title = manualVal.title.replace(/[._]/g, ' ').trim();
-           }
-           if (manualVal.year) {
-             year = `(${manualVal.year})`;
-           }
-         }
-         
-         if (manualIdStr.startsWith('imdbid-')) {
-             imdbId = manualIdStr.replace('imdbid-', '');
-         } else {
-             tmdbId = manualIdStr.replace('tmdbid-', '');
-             if (!tmdbId && /^\d+$/.test(manualIdStr)) {
-                 tmdbId = manualIdStr;
-                 manualIdStr = `tmdbid-${tmdbId}`;
-             } else if (!tmdbId && !manualIdStr.startsWith('imdbid-') && !manualIdStr.startsWith('tmdbid-')) {
-                 manualIdStr = `tmdbid-${manualIdStr}`;
-                 tmdbId = manualIdStr.replace('tmdbid-', '');
-             }
-         }
-      }
 
       // Find in library by ID
       let libItem = null;
@@ -203,16 +166,12 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
         }
       } else {
         // New folder suggestion
-        const folderName = folderNamePart.replace(/\.[^/.]+$/, ""); // Without extension
+        const folderName = name.replace(/\.[^/.]+$/, ""); // Without extension
         if (selectedRemote.mediaType === 'series' && seasonNum !== null) {
-           const seriesFolder = title + (year ? ` ${year}` : '') + (manualIdStr ? ` [${manualIdStr}]` : (tmdbId ? ` [tmdbid-${tmdbId}]` : (imdbId ? ` [imdbid-${imdbId}]` : '')));
+           const seriesFolder = title + (name.match(/\(\d{4}\)/) ? ` ${name.match(/\(\d{4}\)/)![0]}` : '') + (tmdbId ? ` [tmdbid-${tmdbId}]` : '');
            targetPath = `${seriesFolder}/Season ${seasonNum.toString().padStart(2, '0')}/${name}`;
         } else {
-           if (manualIdStr) {
-               targetPath = `${title} ${year ? year + ' ' : ''}[${manualIdStr}]/${name}`;
-           } else {
-               targetPath = `${folderName}/${name}`;
-           }
+           targetPath = `${folderName}/${name}`;
         }
       }
       
@@ -220,35 +179,16 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
         fileId: f.id,
         originalName: f.originalPath,
         newName: name,
-        targetPath: customPaths[f.id] || targetPath,
+        targetPath,
         matchType,
-        seriesTitle: folderNamePart.replace(/\[tmdbid-.*?\]/gi, '').replace(/\[imdbid-.*?\]/gi, '').replace(/\(\d{4}\)/g, '').replace(/[._]/g, ' ').trim(), // keep original generic title for dict key
-        providerId: manualIdStr || '',
         selected: true,
         status: 'pending',
         progress: 0
       };
     });
     
-    // Preserve statuses and progress from existing matches if they exist
-    setMatches(prev => {
-        if (prev.length === 0) return newMatches;
-        
-        return newMatches.map(nm => {
-            const existing = prev.find(p => p.fileId === nm.fileId);
-            if (existing) {
-                return {
-                    ...nm,
-                    status: existing.status,
-                    progress: existing.progress,
-                    message: existing.message,
-                    selected: existing.selected
-                };
-            }
-            return nm;
-        });
-    });
-  }, [files, library, selectedRemote, manualIds, customPaths]);
+    setMatches(newMatches);
+  }, [files, library, selectedRemote]);
 
   const handleUpload = async () => {
     setIsUploading(true);
@@ -521,9 +461,7 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
                       <input 
                         type="text" 
                         value={match.targetPath}
-                        onChange={e => {
-                          setCustomPaths(prev => ({ ...prev, [match.fileId]: e.target.value }));
-                        }}
+                        onChange={e => setMatches(prev => prev.map((m, idx) => idx === index ? { ...m, targetPath: e.target.value } : m))}
                         disabled={isUploading}
                         className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-sm font-mono text-gray-800 dark:text-gray-300 focus:ring-1 focus:ring-primary-500 outline-none"
                       />
