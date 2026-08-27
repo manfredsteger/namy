@@ -50,7 +50,7 @@ interface MatchResult {
   message?: string;
 }
 
-export function UploadModal({ files, onClose }: UploadModalProps) {
+export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps) {
   const { t } = useTranslation();
   const [remotes, setRemotes] = useState<RemoteConfig[]>([]);
   const [selectedRemoteId, setSelectedRemoteId] = useState<string>('');
@@ -497,7 +497,7 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
                       <div className="mb-2 flex items-center gap-2">
                         <input
                            type="text"
-                           value={manualIds[match.seriesTitle] || ''}
+                           value={typeof manualIds[match.seriesTitle] === 'string' ? manualIds[match.seriesTitle] as string : (manualIds[match.seriesTitle] as any)?.id || ''}
                            onChange={e => setManualIds(prev => ({ ...prev, [match.seriesTitle!]: e.target.value }))}
                            placeholder={t("upload.providerIdPlaceholder")}
                            className="flex-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-800 dark:text-gray-300 focus:ring-1 focus:ring-primary-500 outline-none"
@@ -506,7 +506,7 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
                           <TmdbSearchDropdown 
                              initialQuery={match.seriesTitle}
                              onSelect={(id, title, year) => {
-                               setManualIds(prev => ({ ...prev, [match.seriesTitle!]: id }));
+                               setManualIds(prev => ({ ...prev, [match.seriesTitle!]: { id, title, year } }));
                              }}
                           />
                         )}

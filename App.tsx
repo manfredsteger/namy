@@ -178,7 +178,9 @@ const App: React.FC = () => {
     try {
       const storedConventions = localStorage.getItem('renamer-conventions');
       if (storedConventions) {
-        setSavedConventions(JSON.parse(storedConventions));
+        const parsed = JSON.parse(storedConventions);
+        const custom = parsed.filter((c: Convention) => !defaultConventions.some(d => d.id === c.id));
+        setSavedConventions([...defaultConventions, ...custom]);
       } else {
         setSavedConventions(defaultConventions);
       }
