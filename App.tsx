@@ -230,6 +230,10 @@ const App: React.FC = () => {
       .map(p => p.trim().toLowerCase())
       .filter(p => p.length > 0);
 
+    let normalizedProviderCode = providerCode.trim();
+    if (/^\d+$/.test(normalizedProviderCode)) normalizedProviderCode = `tmdbid-${normalizedProviderCode}`;
+    else if (/^tt\d+$/.test(normalizedProviderCode)) normalizedProviderCode = `imdbid-${normalizedProviderCode}`;
+
     const result = files
       .filter(file => {
         const path = file.originalPath.toLowerCase();
@@ -239,7 +243,7 @@ const App: React.FC = () => {
       })
       .map(file => {
         try {
-          const newPath = renameFn(file.originalPath, file.isDirectory, providerCode);
+          const newPath = renameFn(file.originalPath, file.isDirectory, normalizedProviderCode);
           return { ...file, newPath };
         } catch (e) {
           console.error(`Error processing file "${file.originalPath}":`, e);

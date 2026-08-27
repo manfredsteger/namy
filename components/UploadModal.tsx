@@ -145,18 +145,10 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
            }
          }
          
-         if (manualIdStr.startsWith('imdbid-')) {
-             imdbId = manualIdStr.replace('imdbid-', '');
-         } else {
-             tmdbId = manualIdStr.replace('tmdbid-', '');
-             if (!tmdbId && /^\d+$/.test(manualIdStr)) {
-                 tmdbId = manualIdStr;
-                 manualIdStr = `tmdbid-${tmdbId}`;
-             } else if (!tmdbId && !manualIdStr.startsWith('imdbid-') && !manualIdStr.startsWith('tmdbid-')) {
-                 manualIdStr = `tmdbid-${manualIdStr}`;
-                 tmdbId = manualIdStr.replace('tmdbid-', '');
-             }
-         }
+         if (/^\d+$/.test(manualIdStr)) manualIdStr = `tmdbid-${manualIdStr}`;
+         else if (/^tt\d+$/.test(manualIdStr)) manualIdStr = `imdbid-${manualIdStr}`;
+         if (manualIdStr.startsWith('imdbid-')) imdbId = manualIdStr.slice(7);
+         else if (manualIdStr.startsWith('tmdbid-')) tmdbId = manualIdStr.slice(7);
       }
 
       // Find in library by ID

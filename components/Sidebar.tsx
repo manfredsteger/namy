@@ -84,13 +84,24 @@ const Sidebar: React.FC<SidebarProps> = ({
               type="text"
               value={providerCode}
               onChange={(e) => onProviderCodeChange(e.target.value)}
+              onBlur={() => {
+                let code = providerCode.trim();
+                if (/^\d+$/.test(code)) code = `tmdbid-${code}`;
+                else if (/^tt\d+$/.test(code)) code = `imdbid-${code}`;
+                if (code !== providerCode) onProviderCodeChange(code);
+              }}
               placeholder={t('sidebar.providerCode.placeholder')}
               className="w-full p-3 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
             />
             {tmdbApiKeySet && (
               <TmdbSearchDropdown 
                 initialQuery=""
-                onSelect={(id) => onProviderCodeChange(id)}
+                onSelect={(id) => {
+                  let code = id.trim();
+                  if (/^\d+$/.test(code)) code = `tmdbid-${code}`;
+                  else if (/^tt\d+$/.test(code)) code = `imdbid-${code}`;
+                  onProviderCodeChange(code);
+                }}
               />
             )}
           </div>
