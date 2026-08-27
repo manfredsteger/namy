@@ -20,6 +20,8 @@ export const de: Translations = {
     done: 'hochgeladen',
     errors: 'Fehler',
     uploading: 'Lade hoch...',
+    providerIdPlaceholder: 'Provider-ID (optional, z.B. tmdbid-123)',
+    noIdWarning: 'Ohne ID kann Jellyfin die Serie falsch zuordnen',
     startBtn: 'Upload starten'
   },
   remotes: {
@@ -45,6 +47,7 @@ export const de: Translations = {
     testFailed: 'Verbindung fehlgeschlagen',
     useFolderBtn: 'Diesen Ordner verwenden',
     browseHint: 'Navigieren Sie zum Verzeichnis, das Ihre Dateien enthält, und klicken Sie auf "Diesen Ordner verwenden".',
+    loadPath: 'Pfad laden',
     emptyFolder: 'Ordner ist leer',
     summary: 'Zusammenfassung',
     type: {
@@ -56,6 +59,12 @@ export const de: Translations = {
     libraryResults: '{{count}} Einträge gefunden',
     seasons: 'Staffeln',
     noResults: 'Keine Elemente in diesem Verzeichnis gefunden.'
+  },
+  tmdb: {
+    searchTitle: 'TMDB durchsuchen',
+    placeholder: 'TMDB durchsuchen...',
+    searching: 'Suche...',
+    noResults: 'Keine Ergebnisse gefunden.'
   },
   app: {
     title: 'Datei-Umbenenner Pro',
@@ -99,6 +108,12 @@ export const de: Translations = {
   },
   settings: {
     title: 'Einstellungen',
+    tmdb: {
+      title: 'TMDB Integration',
+      placeholder: 'TMDB API-Key (optional)',
+      placeholderSet: 'API-Key ist gesetzt (neuen eingeben zum Ändern)',
+      hint: 'Holen Sie sich einen API-Key auf themoviedb.org. Erforderlich für die TMDB-Suche.'
+    },
     ignore: {
       title: 'Ignorier-Liste',
       description: 'Klicken Sie auf Vorschläge, um sie hinzuzufügen, oder fügen Sie eigene Regeln hinzu.',
@@ -117,6 +132,8 @@ export const de: Translations = {
     done: 'Fertig',
     downloadZip: 'ZIP Herunterladen',
     downloadScript: 'Bash-Skript Herunterladen (Lokal)',
+    next: 'Weiter',
+    back: 'Zurück',
     cancel: 'Abbrechen',
     close: 'Schließen',
   },
@@ -142,6 +159,12 @@ export const de: Translations = {
     templates: {
       title: 'Gespeicherte Rezepte',
       empty: 'Noch keine Rezepte gespeichert.'
+    },
+    tmdb: {
+      title: 'TMDB Integration',
+      placeholder: 'TMDB API-Key (optional)',
+      placeholderSet: 'API-Key ist gesetzt (neuen eingeben zum Ändern)',
+      hint: 'Holen Sie sich einen API-Key auf themoviedb.org. Erforderlich für die TMDB-Suche.'
     },
     ignore: {
       title: 'Ignorier-Liste',

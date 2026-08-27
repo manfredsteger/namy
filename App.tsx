@@ -108,8 +108,8 @@ return path;`,
     name: 'conventions.jellyfinSeries',
     requiresProviderCode: true,
     script: `// Jellyfin Series Convention
-// Extracts Series Title, Year, Season, and Episode. Appends Provider Code to Series Folder and Episode file.
-// E.g. "Series.Name.2023.S01E02.mkv" -> "Series Name (2023) [tmdbid-123]/Season 01/Series Name (2023) S01E02 [tmdbid-123].mkv"
+// Extracts Series Title, Year, Season, and Episode. Appends Provider Code to Series Folder.
+// E.g. "Series.Name.2023.S01E02.mkv" -> "Series Name (2023) [tmdbid-123]/Season 01/S01E02.mkv"
 if (isDirectory) return path;
 
 const parts = path.split('/');
@@ -128,7 +128,7 @@ if (match) {
   const code = providerCode ? \` [\${providerCode}]\` : '';
   const folderName = \`\${showName}\${year}\${code}\`;
   
-  return \`\${folderName}/Season \${season}/\${showName}\${year} S\${season}E\${episode}\${code}\${ext}\`;
+  return \`\${folderName}/Season \${season}/S\${season}E\${episode}\${ext}\`;
 }
 
 return path;`,
@@ -145,6 +145,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savedConventions, setSavedConventions] = useState<Convention[]>([]);
   const [ignoreList, setIgnoreList] = useState<string>('.DS_Store\nthumbs.db');
+  const [tmdbApiKeySet, setTmdbApiKeySet] = useState<boolean>(false);
   const [providerCode, setProviderCode] = useState<string>('');
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'info' | 'success' } | null>(null);
   
@@ -865,14 +866,16 @@ const App: React.FC = () => {
         </header>
 
         <SettingsModal 
-          isOpen={isSettingsOpen} 
+          isOpen={isSettingsOpen}
+          tmdbApiKeySet={tmdbApiKeySet}
+          onSettingsChange={setTmdbApiKeySet} 
           onClose={() => setIsSettingsOpen(false)} 
           ignoreList={ignoreList} 
           onIgnoreListChange={setIgnoreList} 
         />
         
                 {isRemotesOpen && <RemotesModal onClose={() => setIsRemotesOpen(false)} />}
-        {isUploadModalOpen && <UploadModal files={processedFiles} onClose={() => setIsUploadModalOpen(false)} />}
+        {isUploadModalOpen && <UploadModal files={processedFiles} onClose={() => setIsUploadModalOpen(false)} tmdbApiKeySet={tmdbApiKeySet} />}
 
         
         {isRenaming && renameProgress && (

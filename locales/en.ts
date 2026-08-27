@@ -18,6 +18,8 @@ export const en = {
     done: 'uploaded',
     errors: 'errors',
     uploading: 'Uploading...',
+    providerIdPlaceholder: 'Provider-ID (optional, e.g. tmdbid-123)',
+    noIdWarning: 'Without an ID, Jellyfin might mismatch the series',
     startBtn: 'Start Upload'
   },
   remotes: {
@@ -43,6 +45,7 @@ export const en = {
     testFailed: 'Connection failed',
     useFolderBtn: 'Use this folder',
     browseHint: 'Navigate to the directory containing your files and click "Use this folder".',
+    loadPath: 'Load Path',
     emptyFolder: 'Folder is empty',
     summary: 'Summary',
     type: {
@@ -54,6 +57,12 @@ export const en = {
     libraryResults: 'Found {{count}} items',
     seasons: 'seasons',
     noResults: 'No items found in this directory.'
+  },
+  tmdb: {
+    searchTitle: 'Search TMDB',
+    placeholder: 'Search TMDB...',
+    searching: 'Searching...',
+    noResults: 'No results found.'
   },
   app: {
     title: 'File Renamer Pro',
@@ -97,6 +106,12 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    tmdb: {
+      title: 'TMDB Integration',
+      placeholder: 'TMDB API-Key (optional)',
+      placeholderSet: 'API-Key is set (enter new to update)',
+      hint: 'Get an API key at themoviedb.org. Required for TMDB search.'
+    },
     ignore: {
       title: 'Ignore List',
       description: 'Click on suggestions to add them, or add custom rules.',
@@ -115,6 +130,8 @@ export const en = {
     done: 'Done',
     downloadZip: 'Download ZIP',
     downloadScript: 'Download Bash Script (Local)',
+    next: 'Next',
+    back: 'Back',
     cancel: 'Cancel',
     close: 'Close',
   },
@@ -140,6 +157,12 @@ export const en = {
     templates: {
       title: 'Saved Templates',
       empty: 'No saved conventions yet.'
+    },
+    tmdb: {
+      title: 'TMDB Integration',
+      placeholder: 'TMDB API-Key (optional)',
+      placeholderSet: 'API-Key is set (enter new to update)',
+      hint: 'Get an API key at themoviedb.org. Required for TMDB search.'
     },
     ignore: {
       title: 'Ignore List',

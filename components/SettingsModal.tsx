@@ -3,6 +3,8 @@ import { useTranslation } from '../hooks/useTranslation';
 import { XIcon, PlusIcon, TrashIcon } from './icons';
 
 interface SettingsModalProps {
+  tmdbApiKeySet?: boolean;
+  onSettingsChange?: (val: boolean) => void;
   isOpen: boolean;
   onClose: () => void;
   ignoreList: string;
@@ -20,11 +22,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   ignoreList,
   onIgnoreListChange,
+  tmdbApiKeySet = false,
+  onSettingsChange,
 }) => {
   const { t } = useTranslation();
   const [activeIgnores, setActiveIgnores] = useState<string[]>([]);
   const [customRule, setCustomRule] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [tmdbKey, setTmdbKey] = useState('');
+  const [isSavingKey, setIsSavingKey] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -33,6 +39,26 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [ignoreList, isOpen]);
 
   if (!isOpen) return null;
+
+  
+  const handleSaveTmdbKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingKey(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tmdbApiKey: tmdbKey })
+      });
+      const data = await res.json();
+      if (onSettingsChange) onSettingsChange(data.tmdbApiKeySet);
+      setTmdbKey('');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
 
   const updateIgnoreList = (newIgnores: string[]) => {
     const uniqueIgnores = Array.from(new Set(newIgnores));
@@ -112,6 +138,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
         
         {/* Body */}
+
+          {/* TMDB API Key Section */}
+          <div className="p-6 border-b border-gray-800 bg-gray-900/50">
+            <h3 className="text-sm font-semibold mb-4 text-primary-400 uppercase tracking-wider">{t("settings.tmdb.title")}</h3>
+            <form onSubmit={handleSaveTmdbKey} className="flex gap-2 max-w-xl">
+              <input
+                type="password"
+                value={tmdbKey}
+                onChange={e => setTmdbKey(e.target.value)}
+                placeholder={tmdbApiKeySet ? t('settings.tmdb.placeholderSet') : t('settings.tmdb.placeholder')}
+                className="flex-1 p-2 bg-gray-950 border border-gray-800 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 font-mono text-sm text-gray-200"
+              />
+              <button 
+                type="submit"
+                disabled={isSavingKey || !tmdbKey.trim()}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors disabled:opacity-50"
+              >
+                {t('common.save')}
+              </button>
+            </form>
+            <p className="text-xs text-gray-500 mt-2">
+              {t('settings.tmdb.hint').split('themoviedb.org')[0]}<a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer" className="text-primary-400 hover:underline">themoviedb.org</a>{t("settings.tmdb.hint").split("themoviedb.org")[1] || ""}
+            </p>
+          </div>
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           
           {/* Left Column: Suggestions */}

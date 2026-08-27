@@ -2,6 +2,8 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import busboy from 'busboy';
 import path from 'path';
+import fs from 'fs/promises';
+import { initDataDir } from './remotesManager';
 import { getRemotes, getRemote, addRemote, updateRemote, deleteRemote, RemoteConfig } from './remotesManager';
 import { createRemoteClient } from './remoteClient';
 
@@ -11,6 +13,75 @@ function stripPassword(remote: RemoteConfig) {
   const { password, ...rest } = remote;
   return rest;
 }
+
+
+// Settings
+const getSettingsPath = () => path.join(process.cwd(), 'data', 'settings.json');
+
+async function getSettings() {
+  try {
+    const data = await fs.readFile(getSettingsPath(), 'utf-8');
+    return JSON.parse(data);
+  } catch (e) {
+    return {};
+  }
+}
+
+async function saveSettings(settings: any) {
+  await fs.writeFile(getSettingsPath(), JSON.stringify(settings, null, 2));
+}
+
+router.get('/settings', async (req, res) => {
+  const settings = await getSettings();
+  res.json({ tmdbApiKeySet: !!settings.tmdbApiKey });
+});
+
+router.put('/settings', async (req, res) => {
+  const settings = await getSettings();
+  if (req.body.tmdbApiKey !== undefined) {
+    settings.tmdbApiKey = req.body.tmdbApiKey;
+  }
+  await saveSettings(settings);
+  res.json({ tmdbApiKeySet: !!settings.tmdbApiKey });
+});
+
+router.get('/tmdb/search', async (req, res) => {
+  const query = req.query.query as string;
+  const type = req.query.type || 'multi';
+  
+  if (!query) return res.status(400).json({ message: 'Query is required' });
+  
+  const settings = await getSettings();
+  const apiKey = settings.tmdbApiKey;
+  if (!apiKey) return res.status(400).json({ message: 'TMDB API key not configured' });
+  
+  try {
+    const url = `https://api.themoviedb.org/3/search/${type}?api_key=${apiKey}&query=${encodeURIComponent(query)}&language=de-DE`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      if (response.status === 401) {
+         return res.status(401).json({ message: 'API-Key ungültig' });
+      }
+      return res.status(response.status).json({ message: `TMDB API error: ${response.statusText}` });
+    }
+    const data = await response.json();
+    
+    // Map response
+    const results = data.results.map((item: any) => ({
+      id: item.id,
+      mediaType: item.media_type || (type === 'multi' ? undefined : type),
+      title: item.title || item.name,
+      originalTitle: item.original_title || item.original_name,
+      year: item.release_date ? item.release_date.split('-')[0] : (item.first_air_date ? item.first_air_date.split('-')[0] : null),
+      posterUrl: item.poster_path ? `https://image.tmdb.org/t/p/w92${item.poster_path}` : null,
+      overview: item.overview ? (item.overview.length > 200 ? item.overview.substring(0, 197) + '...' : item.overview) : null
+    }));
+    
+    res.json({ results });
+  } catch (err: any) {
+    res.status(500).json({ message: 'Error searching TMDB: ' + err.message });
+  }
+});
 
 router.get('/remotes', async (req, res) => {
   try {

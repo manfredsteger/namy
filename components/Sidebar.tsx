@@ -4,6 +4,7 @@ import { SparklesIcon, SaveIcon, TrashIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
 
 interface SidebarProps {
+  tmdbApiKeySet?: boolean;
   script: string;
   setScript: (script: string) => void;
   savedConventions: Convention[];
@@ -27,6 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   providerCode,
   onProviderCodeChange,
   onOpenVisualBuilder,
+  tmdbApiKeySet,
 }) => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [newConventionName, setNewConventionName] = useState('');
@@ -77,13 +79,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           <p className="text-xs text-gray-500 mb-3">
             {t('sidebar.providerCode.description')}
           </p>
-          <input
-            type="text"
-            value={providerCode}
-            onChange={(e) => onProviderCodeChange(e.target.value)}
-            placeholder={t('sidebar.providerCode.placeholder')}
-            className="w-full p-3 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={providerCode}
+              onChange={(e) => onProviderCodeChange(e.target.value)}
+              placeholder={t('sidebar.providerCode.placeholder')}
+              className="w-full p-3 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
+            />
+            {tmdbApiKeySet && (
+              <TmdbSearchDropdown 
+                initialQuery=""
+                onSelect={(id) => onProviderCodeChange(id)}
+              />
+            )}
+          </div>
         </div>
       )}
 

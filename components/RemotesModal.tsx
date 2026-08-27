@@ -424,9 +424,25 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
 
               {wizardStep === 2 && (
                 <div className="space-y-4">
-                  <div className="bg-gray-100 dark:bg-gray-900 rounded-lg p-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 font-mono overflow-x-auto border border-gray-200 dark:border-gray-700">
-                    <FolderOpen className="w-4 h-4 text-primary-500 flex-shrink-0" />
-                    <span>{browsePath}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-gray-100 dark:bg-gray-900 rounded-lg p-3 flex items-center gap-2 text-sm font-mono border border-gray-200 dark:border-gray-700 focus-within:ring-2 focus-within:ring-primary-500">
+                      <FolderOpen className="w-4 h-4 text-primary-500 flex-shrink-0" />
+                      <input 
+                        type="text" 
+                        value={browsePath}
+                        onChange={e => setBrowsePath(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && loadBrowsePath(browsePath)}
+                        className="bg-transparent border-none outline-none w-full text-gray-700 dark:text-gray-300"
+                        placeholder="/"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => loadBrowsePath(browsePath)}
+                      className="p-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                      title={t("remotes.loadPath")}
+                    >
+                      <RefreshCw className="w-5 h-5" />
+                    </button>
                   </div>
                   
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg h-64 overflow-y-auto bg-white dark:bg-gray-800">

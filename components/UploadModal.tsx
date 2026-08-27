@@ -33,6 +33,7 @@ function stringSimilarity(a: string, b: string): number {
 interface UploadModalProps {
   files: ProcessedFile[];
   onClose: () => void;
+  tmdbApiKeySet?: boolean;
 }
 
 interface MatchResult {
@@ -41,6 +42,8 @@ interface MatchResult {
   newName: string;
   targetPath: string;
   matchType: 'id' | 'name-high' | 'name-low' | 'new';
+  seriesTitle?: string;
+  providerId?: string;
   selected: boolean;
   status: 'pending' | 'uploading' | 'success' | 'error' | 'conflict' | 'skipped';
   progress: number;
@@ -55,6 +58,7 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [matches, setMatches] = useState<MatchResult[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [manualIds, setManualIds] = useState<Record<string, string>>({});
   const [uploadStats, setUploadStats] = useState({ total: 0, done: 0, error: 0, skipped: 0 });
 
   useEffect(() => {
@@ -429,6 +433,30 @@ export function UploadModal({ files, onClose }: UploadModalProps) {
                     </div>
                   </td>
                   <td className="p-3 align-top">
+                    {match.matchType === 'new' && match.status === 'pending' && match.seriesTitle && (
+                      <div className="mb-2 flex items-center gap-2">
+                        <input
+                           type="text"
+                           value={manualIds[match.seriesTitle] || ''}
+                           onChange={e => setManualIds(prev => ({ ...prev, [match.seriesTitle!]: e.target.value }))}
+                           placeholder={t("upload.providerIdPlaceholder")}
+                           className="flex-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-800 dark:text-gray-300 focus:ring-1 focus:ring-primary-500 outline-none"
+                        />
+                        {tmdbApiKeySet && (
+                          <TmdbSearchDropdown 
+                             initialQuery={match.seriesTitle}
+                             onSelect={(id, title, year) => {
+                               setManualIds(prev => ({ ...prev, [match.seriesTitle!]: id }));
+                             }}
+                          />
+                        )}
+                        {!manualIds[match.seriesTitle] && (
+                           <div title={t("upload.noIdWarning")} className="text-amber-500 cursor-help">
+                              <AlertTriangle className="w-4 h-4" />
+                           </div>
+                        )}
+                      </div>
+                    )}
                     {match.status === 'pending' || match.status === 'error' ? (
                       <input 
                         type="text" 
