@@ -108,8 +108,10 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
     // Calculate matches
     const newMatches: MatchResult[] = files.filter(f => !f.isDirectory).map(f => {
       const parts = f.newPath.split('/');
-      const folderNamePart = parts.length > 1 ? parts[0] : f.newPath;
-      const name = parts.pop() || f.newPath;
+      const name = parts[parts.length - 1] || f.newPath;
+      // Without a folder segment the file name itself is the basis for the folder name —
+      // strip the extension first, otherwise ".mp4" ends up inside the folder title.
+      const folderNamePart = parts.length > 1 ? parts[0] : name.replace(/\.[^/.]+$/, '');
       
       // Extract info
       const tmdbMatch = folderNamePart.match(/\[tmdbid-(.*?)\]/);
@@ -124,7 +126,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       if (seasonMatch && title.includes(seasonMatch[0])) {
         title = title.substring(0, title.indexOf(seasonMatch[0]));
       }
-      title = title.replace(/[._]/g, ' ').trim();
+      title = title.replace(/[._]/g, ' ').replace(/\s{2,}/g, ' ').replace(/^[\s\-_]+|[\s\-_]+$/g, '').trim();
       
       const existingYearMatch = folderNamePart.match(/\(\d{4}\)/);
       let year = existingYearMatch ? existingYearMatch[0] : '';
@@ -215,7 +217,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
         newName: name,
         targetPath: customPaths[f.id] || targetPath,
         matchType,
-        seriesTitle: folderNamePart.replace(/\[tmdbid-.*?\]/gi, '').replace(/\[imdbid-.*?\]/gi, '').replace(/\(\d{4}\)/g, '').replace(/[._]/g, ' ').trim(), // keep original generic title for dict key
+        seriesTitle: originalTitle, // keep original generic title for dict key
         providerId: manualIdStr || '',
         selected: true,
         status: 'pending',

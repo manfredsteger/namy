@@ -85,23 +85,64 @@ return path; // Return original path if no match`,
     name: 'conventions.jellyfinMovies',
     requiresProviderCode: true,
     script: `// Jellyfin Movie Convention
-// Uses folder name or file name to extract Title and Year, and appends [tmdbid-XXX] or [imdbid-XXX]
+// "Masters.of.the.Universe.2026.German.DL.1080p.mp4" -> "Masters of the Universe (2026) [tmdbid-1698856].mp4"
 if (isDirectory) return path;
+
+// Turns separator-style names into a readable title.
+function cleanTitle(raw) {
+  let t = raw || '';
+  // Dots are always separators; hyphens/underscores only when the name has no spaces at all.
+  t = /\\s/.test(t) ? t.replace(/[._]+/g, ' ') : t.replace(/[._-]+/g, ' ');
+  t = t.replace(/\\s{2,}/g, ' ').replace(/^[\\s._-]+|[\\s._-]+$/g, '').trim();
+  // Only re-capitalise names that lost their casing to an earlier recipe (e.g. web-safe).
+  if (t && t === t.toLowerCase()) {
+    const small = ['a','an','and','the','of','in','on','at','to','for','or','nor','vs',
+                   'der','die','das','den','dem','des','ein','eine','und','von','vom','im','am','zur','zum'];
+    t = t.split(' ')
+         .map((w, i) => (i > 0 && small.indexOf(w) !== -1) ? w : w.charAt(0).toUpperCase() + w.slice(1))
+         .join(' ');
+  }
+  return t;
+}
 
 const parts = path.split('/');
 const filename = parts.pop() || '';
-const match = filename.match(/^(.*?)(?:\\s*\\(?(\\d{4})\\)?)?(?:\\s*\\[.*\\])?(\\.[^.]+)$/);
 
-if (match) {
-  const title = match[1].replace(/\\./g, ' ').trim();
-  const year = match[2] ? \` (\${match[2]})\` : '';
-  const ext = match[3] || '';
-  
-  const code = providerCode ? \` [\${providerCode}]\` : '';
-  return \`\${title}\${year}\${code}\${ext}\`;
+const dot = filename.lastIndexOf('.');
+const ext = dot > 0 ? filename.slice(dot) : '';
+const base = (dot > 0 ? filename.slice(0, dot) : filename)
+  .replace(/\\[(?:tmdb|imdb|tvdb)id-[^\\]]*\\]/gi, '')   // drop an already present provider tag
+  .trim();
+
+// Hyphens only count as separators when the name has no spaces, so "Spider-Man" survives.
+const hasSpaces = /\\s/.test(base);
+const tokens = base.split(hasSpaces ? /[\\s._]+/ : /[._-]+/).filter(Boolean);
+
+// The release year is the LAST 4-digit year token, so "Blade Runner 2049 (2017)" keeps its title.
+const bare = tk => tk.replace(/[()\\[\\]]/g, '');
+let yearIdx = -1;
+for (let i = tokens.length - 1; i > 0; i--) {
+  if (/^(?:19|20)\\d{2}$/.test(bare(tokens[i]))) { yearIdx = i; break; }
 }
 
-return path;`,
+let year = '';
+let titleTokens = tokens;
+if (yearIdx > 0) {
+  year = ' (' + bare(tokens[yearIdx]) + ')';
+  titleTokens = tokens.slice(0, yearIdx);
+} else {
+  // No year: cut the name off at the first release tag (quality, source, codec, language).
+  const tag = /^(?:\\d{3,4}p|4k|uhd|hdr\\d*|sdr|web|webrip|web-?dl|bluray|bdrip|brrip|dvdrip|hdtv|remux|x264|x265|h\\.?264|h\\.?265|hevc|avc|xvid|aac\\d*|ac3|eac3|dts(?:-hd)?|dd\\d?|ddp\\d?|atmos|truehd|german|deutsch|english|multi|dl|ml|subbed|dubbed|proper|repack|extended|uncut|unrated|remastered|imax|directors|complete|internal|readnfo)$/i;
+  for (let i = 1; i < titleTokens.length; i++) {
+    if (tag.test(bare(titleTokens[i]))) { titleTokens = titleTokens.slice(0, i); break; }
+  }
+}
+
+const title = cleanTitle(titleTokens.join(' '));
+if (!title) return path;
+
+const code = providerCode ? ' [' + providerCode + ']' : '';
+return title + year + code + ext;`,
   },
   {
     id: 'jellyfin-series',
@@ -112,14 +153,35 @@ return path;`,
 // E.g. "Series.Name.2023.S01E02.mkv" -> "Series Name (2023) [tmdbid-123]/Season 01/S01E02.mkv"
 if (isDirectory) return path;
 
+// Turns separator-style names into a readable title:
+// "masters-of-the-universe-" -> "Masters of the Universe"
+function cleanTitle(raw) {
+  let t = raw || '';
+  // Dots are always separators; hyphens/underscores only when the name has no spaces at all.
+  t = /\\s/.test(t) ? t.replace(/[._]+/g, ' ') : t.replace(/[._-]+/g, ' ');
+  t = t.replace(/\\s{2,}/g, ' ').replace(/^[\\s._-]+|[\\s._-]+$/g, '').trim();
+  // Only re-capitalise names that lost their casing to an earlier recipe (e.g. web-safe).
+  if (t && t === t.toLowerCase()) {
+    const small = ['a','an','and','the','of','in','on','at','to','for','or','nor','vs',
+                   'der','die','das','den','dem','des','ein','eine','und','von','vom','im','am','zur','zum'];
+    t = t.split(' ')
+         .map((w, i) => (i > 0 && small.indexOf(w) !== -1) ? w : w.charAt(0).toUpperCase() + w.slice(1))
+         .join(' ');
+  }
+  return t;
+}
+
 const parts = path.split('/');
 const filename = parts.pop() || '';
 
 // Regex to capture Show Name, optional Year, Season, Episode, and Extension
-const match = filename.match(/(.*?)(?:\\s*\\(?(\\d{4})\\)?)?[.sS](\\d+)[.eE](\\d+)(?:.*?)(\\.[^.]+)$/);
+const match = filename.match(/(.*?)(?:[\\s._-]*\\(?((?:19|20)\\d{2})\\)?)?[\\s._-]*[sS](\\d+)[\\s._-]*[eE](\\d+)(?:.*?)(\\.[^.]+)$/);
 
 if (match) {
-  const showName = match[1].replace(/\\./g, ' ').trim();
+  const showName = cleanTitle(match[1]);
+  // Already converted ("Show [tmdbid-1]/Season 01/S01E01.mkv") -> leave untouched instead of
+  // dropping the show name, which only lives in the parent folder at that point.
+  if (!showName) return path;
   const year = match[2] ? \` (\${match[2]})\` : '';
   const season = match[3].padStart(2, '0');
   const episode = match[4].padStart(2, '0');
