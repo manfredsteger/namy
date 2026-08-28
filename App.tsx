@@ -142,7 +142,7 @@ const title = cleanTitle(titleTokens.join(' '));
 if (!title) return path;
 
 const code = providerCode ? ' [' + providerCode + ']' : '';
-return title + year + code + ext;`,
+return \`\${title}\${year}\${code}\${ext}\`;`,
   },
   {
     id: 'jellyfin-series',
