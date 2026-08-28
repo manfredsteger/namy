@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
 import { RemoteConfig, RemoteFileInfo, ScanResult } from '../types';
-import { Settings, Server, Plus, Edit2, Trash2, CheckCircle, XCircle, FolderOpen, Play, Search } from 'lucide-react';
+import { Settings, Server, Plus, Edit2, Trash2, CheckCircle, XCircle, FolderOpen, Play, Search, RefreshCw, Copy } from 'lucide-react';
 
 interface RemotesModalProps {
   onClose: () => void;
@@ -16,6 +16,8 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [editingRemoteId, setEditingRemoteId] = useState<string | null>(null);
+  // Remote whose stored password the server should reuse when the password field is left empty.
+  const [credentialSourceId, setCredentialSourceId] = useState<string | null>(null);
   
   // Form state
   const [formData, setFormData] = useState<Partial<RemoteConfig>>({
@@ -68,7 +70,7 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
       const res = await fetch('/api/remotes/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...formData, credentialsFromId: credentialSourceId })
       });
       const data = await res.json();
       if (res.ok) {
@@ -89,7 +91,7 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
       const res = await fetch('/api/remotes/browse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, path })
+        body: JSON.stringify({ ...formData, path, credentialsFromId: credentialSourceId })
       });
       if (res.ok) {
         const data = await res.json();
@@ -122,10 +124,11 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
       const url = isEdit ? `/api/remotes/${editingRemoteId}` : '/api/remotes';
       const method = isEdit ? 'PUT' : 'POST';
       
+      const { id: _ignoredId, ...payload } = formData;
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ ...payload, credentialsFromId: credentialSourceId })
       });
       
       if (res.ok) {
@@ -152,6 +155,26 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
   const handleEdit = (remote: RemoteConfig) => {
     setFormData(remote);
     setEditingRemoteId(remote.id);
+    setCredentialSourceId(remote.id);
+    setWizardStep(1);
+    setTestResult(null);
+    setIsWizardOpen(true);
+  };
+
+  const buildCopyName = (name: string) => {
+    const base = t('remotes.copySuffix', { name });
+    if (!remotes.some(r => r.name === base)) return base;
+    let n = 2;
+    while (remotes.some(r => r.name === `${base} ${n}`)) n++;
+    return `${base} ${n}`;
+  };
+
+  const handleClone = (remote: RemoteConfig) => {
+    // New entry (POST), but the server reuses the source remote's stored password.
+    const { id, password, ...rest } = remote;
+    setFormData({ ...rest, name: buildCopyName(remote.name), password: '' });
+    setEditingRemoteId(null);
+    setCredentialSourceId(remote.id);
     setWizardStep(1);
     setTestResult(null);
     setIsWizardOpen(true);
@@ -169,6 +192,7 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
       basePath: '/'
     });
     setEditingRemoteId(null);
+    setCredentialSourceId(null);
     setWizardStep(1);
     setTestResult(null);
     setIsWizardOpen(true);
@@ -188,6 +212,9 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
       setScanningRemoteId(null);
     }
   };
+
+  const isCloning = !editingRemoteId && !!credentialSourceId;
+  const usesInheritedPassword = !!credentialSourceId && !formData.password;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -258,6 +285,13 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
                             <Search className={`w-5 h-5 ${scanningRemoteId === remote.id ? 'animate-pulse' : ''}`} />
                           </button>
                           <button 
+                            onClick={() => handleClone(remote)}
+                            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
+                            title={t('remotes.cloneBtn')}
+                          >
+                            <Copy className="w-5 h-5" />
+                          </button>
+                          <button 
                             onClick={() => handleEdit(remote)}
                             className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
                             title={t('common.edit')}
@@ -322,6 +356,11 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
 
               {wizardStep === 1 && (
                 <div className="space-y-4">
+                  {isCloning && (
+                    <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border border-primary-100 dark:border-primary-800 text-sm text-primary-800 dark:text-primary-300">
+                      <p>{t('remotes.cloneHint')}</p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('remotes.name')}</label>
@@ -397,7 +436,7 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
                         value={formData.password} 
                         onChange={e => setFormData({...formData, password: e.target.value})}
                         className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
-                        placeholder={editingRemoteId ? t('remotes.passwordUnchanged') : ''}
+                        placeholder={isCloning ? t('remotes.passwordInherited') : (editingRemoteId ? t('remotes.passwordUnchanged') : '')}
                       />
                     </div>
                   </div>
@@ -535,6 +574,9 @@ export function RemotesModal({ onClose }: RemotesModalProps) {
                       <div>
                         <dt className="text-gray-500 dark:text-gray-400">{t('remotes.username')}</dt>
                         <dd className="font-medium text-gray-900 dark:text-white">{formData.username}</dd>
+                        {usesInheritedPassword && (
+                          <dd className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('remotes.credentialsInherited')}</dd>
+                        )}
                       </div>
                       <div className="sm:col-span-2 pt-2 mt-2 border-t border-gray-200 dark:border-gray-700">
                         <dt className="text-gray-500 dark:text-gray-400 mb-1">{t('remotes.basePath')}</dt>

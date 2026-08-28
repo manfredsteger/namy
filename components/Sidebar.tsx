@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Convention } from '../types';
 import { SparklesIcon, SaveIcon, TrashIcon } from './icons';
 import { useTranslation } from '../hooks/useTranslation';
+import { TmdbSearchDropdown } from './TmdbSearchDropdown';
 
 interface SidebarProps {
   tmdbApiKeySet?: boolean;

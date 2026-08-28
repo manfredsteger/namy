@@ -14,6 +14,23 @@ function stripPassword(remote: RemoteConfig) {
   return rest;
 }
 
+/**
+ * Resolves credentials for a request body. If no password was supplied but the body
+ * references an existing remote via `credentialsFromId`, the stored password of that
+ * remote is used. The reference field itself is always stripped so it never ends up
+ * in remotes.json, and passwords are never sent back to the client.
+ */
+async function resolveCredentials(body: any): Promise<any> {
+  const { credentialsFromId, ...rest } = body ?? {};
+  if (!rest.password && credentialsFromId) {
+    const source = await getRemote(credentialsFromId);
+    if (source?.password) {
+      return { ...rest, password: source.password };
+    }
+  }
+  return rest;
+}
+
 
 // Settings
 const getSettingsPath = () => path.join(process.cwd(), 'data', 'settings.json');
@@ -94,7 +111,8 @@ router.get('/remotes', async (req, res) => {
 
 router.post('/remotes', async (req, res) => {
   try {
-    const newRemote = { ...req.body, id: uuidv4() };
+    const config = await resolveCredentials(req.body);
+    const newRemote = { ...config, id: uuidv4() } as RemoteConfig;
     await addRemote(newRemote);
     res.status(201).json(stripPassword(newRemote));
   } catch (err: any) {
@@ -104,7 +122,10 @@ router.post('/remotes', async (req, res) => {
 
 router.put('/remotes/:id', async (req, res) => {
   try {
-    const updated = await updateRemote(req.params.id, req.body);
+    const config = await resolveCredentials(req.body);
+    // An empty password field means "keep the stored one", never overwrite it with ''.
+    if (!config.password) delete config.password;
+    const updated = await updateRemote(req.params.id, config);
     if (!updated) {
       return res.status(404).json({ message: 'Remote not found' });
     }
@@ -127,7 +148,7 @@ router.delete('/remotes/:id', async (req, res) => {
 });
 
 router.post('/remotes/test', async (req, res) => {
-  const config = req.body as RemoteConfig;
+  const config = await resolveCredentials(req.body) as RemoteConfig;
   const client = createRemoteClient(config);
   try {
     await client.connect();
@@ -139,8 +160,9 @@ router.post('/remotes/test', async (req, res) => {
 });
 
 router.post('/remotes/browse', async (req, res) => {
-  const { path: browsePath, ...config } = req.body;
-  const client = createRemoteClient(config as RemoteConfig);
+  const { path: browsePath, ...body } = req.body;
+  const config = await resolveCredentials(body) as RemoteConfig;
+  const client = createRemoteClient(config);
   try {
     await client.connect();
     const list = await client.list(browsePath || config.basePath || '/');

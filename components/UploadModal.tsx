@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
 import { ProcessedFile, RemoteConfig, ScanResult } from '../types';
+import { TmdbSearchDropdown } from './TmdbSearchDropdown';
 import { Upload, X, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, Play, StopCircle, RefreshCw } from 'lucide-react';
 
 // Simple Levenshtein distance
