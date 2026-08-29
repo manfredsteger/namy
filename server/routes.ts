@@ -136,7 +136,7 @@ router.get('/tmdb/identify', async (req, res) => {
     const second = candidates[1];
     const yearOk = !year || !best.year || best.year === year;
     const confident =
-      (candidates.length === 1 && best.score >= 0.6) ||           // one hit only = unambiguous
+      (candidates.length === 1 && best.score >= 0.6 && yearOk) || // one hit only = unambiguous
       (best.score >= 0.85 && yearOk) ||                            // clear title match
       (best.score >= 0.7 && yearOk && (!second || best.score - second.score >= 0.25));
 
