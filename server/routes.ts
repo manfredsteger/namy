@@ -63,6 +63,89 @@ router.put('/settings', async (req, res) => {
   res.json({ tmdbApiKeySet: !!settings.tmdbApiKey });
 });
 
+// Identify a title on TMDB: searches in German AND English, scores every title variant
+// (localised, English, original) and decides whether the hit is unambiguous enough to apply
+// without asking. This is what fills in the provider ID automatically.
+function normaliseTitle(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function titleScore(a: string, b: string): number {
+  const x = normaliseTitle(a), y = normaliseTitle(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  if (x.includes(y) || y.includes(x)) return 0.9;   // "Frieren" vs "Frieren - Nach dem Ende der Reise"
+  const m = Array.from({ length: x.length + 1 }, (_, i) => [i, ...Array(y.length).fill(0)]);
+  for (let j = 0; j <= y.length; j++) m[0][j] = j;
+  for (let i = 1; i <= x.length; i++)
+    for (let j = 1; j <= y.length; j++)
+      m[i][j] = Math.min(m[i-1][j] + 1, m[i][j-1] + 1, m[i-1][j-1] + (x[i-1] === y[j-1] ? 0 : 1));
+  return 1 - m[x.length][y.length] / Math.max(x.length, y.length);
+}
+
+router.get('/tmdb/identify', async (req, res) => {
+  const title = String(req.query.title || '').trim();
+  const year = String(req.query.year || '').trim();
+  const kind = req.query.type === 'tv' ? 'tv' : req.query.type === 'movie' ? 'movie' : 'multi';
+  if (!title) return res.status(400).json({ message: 'title is required' });
+
+  const settings = await getSettings();
+  const apiKey = settings.tmdbApiKey;
+  if (!apiKey) return res.status(400).json({ message: 'TMDB API key not configured' });
+
+  try {
+    // Same query in both languages: the German title can be completely different from the
+    // English one ("From Old Country Bumpkin..." -> "Vom Landei zum Schwertheiligen").
+    const responses = await Promise.all(['de-DE', 'en-US'].map(lang =>
+      fetch(`https://api.themoviedb.org/3/search/${kind}?api_key=${apiKey}&language=${lang}&query=${encodeURIComponent(title)}`)
+        .then(r => r.ok ? r.json() : { results: [] })
+        .catch(() => ({ results: [] }))
+    ));
+
+    const byId = new Map<number, any>();
+    for (const data of responses) {
+      for (const r of (data.results || [])) {
+        const mediaType = r.media_type || kind;
+        if (mediaType !== 'movie' && mediaType !== 'tv') continue;
+        const entry = byId.get(r.id) || {
+          id: r.id, mediaType, titles: new Set<string>(),
+          title: r.title || r.name,
+          year: ((r.release_date || r.first_air_date || '').split('-')[0]) || null,
+          posterUrl: r.poster_path ? `https://image.tmdb.org/t/p/w92${r.poster_path}` : null,
+          popularity: r.popularity || 0
+        };
+        for (const v of [r.title, r.name, r.original_title, r.original_name]) if (v) entry.titles.add(v);
+        byId.set(r.id, entry);
+      }
+    }
+
+    const candidates = [...byId.values()].map(c => {
+      let score = 0;
+      for (const v of c.titles) score = Math.max(score, titleScore(title, v));
+      if (year && c.year) score += (c.year === year ? 0.1 : -0.35);
+      return { ...c, titles: [...c.titles], score: Math.round(score * 1000) / 1000 };
+    }).sort((a, b) => b.score - a.score || b.popularity - a.popularity);
+
+    if (candidates.length === 0) return res.json({ found: false, candidates: [] });
+
+    const best = candidates[0];
+    const second = candidates[1];
+    const yearOk = !year || !best.year || best.year === year;
+    const confident =
+      (candidates.length === 1 && best.score >= 0.6) ||           // one hit only = unambiguous
+      (best.score >= 0.85 && yearOk) ||                            // clear title match
+      (best.score >= 0.7 && yearOk && (!second || best.score - second.score >= 0.25));
+
+    res.json({ found: true, confident, best, candidates: candidates.slice(0, 5) });
+  } catch (err: any) {
+    res.status(500).json({ message: 'Error identifying on TMDB: ' + err.message });
+  }
+});
+
 router.get('/tmdb/lookup', async (req, res) => {
   const raw = String(req.query.id || '');
   const id = raw.replace(/^tmdbid-/i, '').trim();

@@ -303,29 +303,22 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
         setAutoLookup(prev => ({ ...prev, [key]: 'pending' }));
         const type = selectedRemote.mediaType === 'series' ? 'tv'
                    : selectedRemote.mediaType === 'movies' ? 'movie' : 'multi';
+        const fileYear = (m.targetPath.match(/\((\d{4})\)/) || [])[1] || '';
         try {
-          const res = await fetch(`/api/tmdb/search?query=${encodeURIComponent(key)}&type=${type}`);
+          const res = await fetch(`/api/tmdb/identify?title=${encodeURIComponent(key)}&type=${type}`
+                                  + (fileYear ? `&year=${fileYear}` : ''));
           if (!res.ok) { if (alive.current) setAutoLookup(prev => ({ ...prev, [key]: 'none' })); continue; }
           const data = await res.json();
-          const fileYear = (m.targetPath.match(/\((\d{4})\)/) || [])[1] || '';
-
-          let best: any = null, bestScore = 0;
-          for (const r of (data.results || []).slice(0, 8)) {
-            let score = stringSimilarity(key, r.title || '');
-            if (fileYear && r.year) score += (r.year === fileYear ? 0.1 : -0.3);
-            if (score > bestScore) { bestScore = score; best = r; }
-          }
           if (!alive.current) return;
 
-          if (!best || bestScore < 0.6) {
+          if (!data.found || !data.best) {
             setAutoLookup(prev => ({ ...prev, [key]: 'none' }));
             continue;
           }
-          const yearOk = !fileYear || !best.year || best.year === fileYear;
-          const apply = bestScore >= 0.85 && yearOk;
-          setAutoLookup(prev => ({ ...prev, [key]: { id: best.id, title: best.title, year: best.year, mediaType: best.mediaType, applied: apply } }));
-          if (apply) {
-            // Only the ID - the local title keeps its spelling so the target path stays predictable.
+          const best = data.best;
+          setAutoLookup(prev => ({ ...prev, [key]: { id: best.id, title: best.title, year: best.year, mediaType: best.mediaType, applied: !!data.confident } }));
+          if (data.confident) {
+            // Only the ID - the local spelling of the title stays, so the target path stays predictable.
             setManualIds(prev => (prev[key] ? prev : { ...prev, [key]: { id: `tmdbid-${best.id}`, mediaType: best.mediaType } }));
           }
         } catch {
@@ -619,7 +612,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                              }}
                           />
                         )}
-                        {!manualIds[match.seriesTitle] && autoLookup[match.seriesTitle] !== 'pending' && (
+                        {!manualIds[match.seriesTitle] && (!tmdbApiKeySet || autoLookup[match.seriesTitle] === 'none') && (
                            <div title={t("upload.noIdWarning")} className="text-amber-500 cursor-help">
                               <AlertTriangle className="w-4 h-4" />
                            </div>
@@ -638,7 +631,19 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                           <span className="px-1.5 py-0.5 rounded bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300 font-medium">TMDB</span>
                           <span className="truncate">{label}</span>
                           {hit.applied ? (
-                            <span className="text-green-600 dark:text-green-400">{t('upload.tmdbApplied')}</span>
+                            <>
+                              <span className="text-green-600 dark:text-green-400">{t('upload.tmdbApplied')}</span>
+                              <button
+                                onClick={() => {
+                                  setManualIds(prev => { const n = { ...prev }; delete n[match.seriesTitle!]; return n; });
+                                  // keep the hit around, but offer it again instead of claiming it is applied
+                                  setAutoLookup(prev => ({ ...prev, [match.seriesTitle!]: { ...hit, applied: false } }));
+                                }}
+                                className="underline hover:text-primary-600 dark:hover:text-primary-400"
+                              >
+                                {t('upload.tmdbUndo')}
+                              </button>
+                            </>
                           ) : (
                             <button
                               onClick={() => setManualIds(prev => ({ ...prev, [match.seriesTitle!]: { id: `tmdbid-${hit.id}`, mediaType: hit.mediaType } }))}

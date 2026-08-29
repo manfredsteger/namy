@@ -1,5 +1,6 @@
 export const en = {
   upload: {
+    tmdbUndo: 'discard',
     mismatchTitle: '{{count}} file(s) do not fit this server',
     mismatchHintSeries: 'A series server only takes episodes (SxxEyy). Pick the movie server above.',
     mismatchHintMovies: 'A movie server only takes movies. Pick the series server above.',

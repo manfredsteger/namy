@@ -2,6 +2,7 @@ import { Translations } from './en';
 
 export const de: Translations = {
   upload: {
+    tmdbUndo: 'verwerfen',
     mismatchTitle: '{{count}} Datei(en) passen nicht zu diesem Server',
     mismatchHintSeries: 'Auf einem Serien-Server werden nur Episoden (SxxEyy) hochgeladen. Wähle oben den Filme-Server aus.',
     mismatchHintMovies: 'Auf einem Filme-Server werden nur Filme hochgeladen. Wähle oben den Serien-Server aus.',
