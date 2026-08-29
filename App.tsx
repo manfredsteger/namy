@@ -228,6 +228,15 @@ const App: React.FC = () => {
   const [hasRemotes, setHasRemotes] = useState<boolean>(false);
   const [isVisualBuilderOpen, setIsVisualBuilderOpen] = useState<boolean>(false);
 
+  // The TMDB key lives on the server; without asking for it, the key looks unset after every
+  // reload and every TMDB feature stays hidden. Re-check whenever the settings dialog closes.
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setTmdbApiKeySet(!!data.tmdbApiKeySet))
+      .catch(console.error);
+  }, [isSettingsOpen]);
+
     useEffect(() => {
     fetch('/api/remotes')
       .then(res => res.json())

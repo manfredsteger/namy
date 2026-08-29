@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
 import { ProcessedFile, RemoteConfig, ScanResult } from '../types';
 import { TmdbSearchDropdown } from './TmdbSearchDropdown';
@@ -24,6 +24,11 @@ function levenshtein(a: string, b: string): number {
   return matrix[a.length][b.length];
 }
 
+// An episode is recognisable by SxxEyy or a "Season N" folder in the path.
+function isEpisodePath(p: string): boolean {
+  return /S\d{1,3}[\s._-]?E\d{1,4}/i.test(p) || /(^|\/)Season\s*\d+\//i.test(p);
+}
+
 function stringSimilarity(a: string, b: string): number {
   const dist = levenshtein(a.toLowerCase(), b.toLowerCase());
   const maxLen = Math.max(a.length, b.length);
@@ -43,6 +48,8 @@ interface MatchResult {
   newName: string;
   targetPath: string;
   matchType: 'id' | 'name-high' | 'name-low' | 'new';
+  kind: 'episode' | 'movie';
+  mediaMismatch: 'kind' | 'tmdb' | null;
   seriesTitle?: string;
   providerId?: string;
   selected: boolean;
@@ -59,9 +66,16 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
   const [isScanning, setIsScanning] = useState(false);
   const [matches, setMatches] = useState<MatchResult[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [manualIds, setManualIds] = useState<Record<string, { id: string, title?: string, year?: string | null } | string>>({});
+  const [manualIds, setManualIds] = useState<Record<string, { id: string, title?: string, year?: string | null, mediaType?: string } | string>>({});
+  // TMDB auto-lookup per title: 'pending' | 'none' | a hit (auto-applied or offered as a suggestion)
+  const [autoLookup, setAutoLookup] = useState<Record<string, 'pending' | 'none' | { id: number, title: string, year: string | null, mediaType?: string, applied: boolean }>>({});
   const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
   const [uploadStats, setUploadStats] = useState({ total: 0, done: 0, error: 0, skipped: 0 });
+  // Titles already sent to TMDB. A ref, not state: writing state here would re-run the effect
+  // that owns the request and abort it before the answer arrives.
+  const lookupRequested = useRef<Set<string>>(new Set());
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
 
   useEffect(() => {
     fetch('/api/remotes')
@@ -69,11 +83,12 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       .then(data => {
         setRemotes(data);
         if (data.length > 0) {
-          // Auto-select based on content
-          const hasSeries = files.some(f => /S\d+E\d+/i.test(f.newPath));
-          const seriesRemote = data.find((r: RemoteConfig) => r.mediaType === 'series');
-          const firstRemote = hasSeries && seriesRemote ? seriesRemote.id : data[0].id;
-          setSelectedRemoteId(firstRemote);
+          // Auto-select by what is actually being uploaded, not by list order:
+          // a movie must not default to the series server.
+          const hasSeries = files.some(f => isEpisodePath(f.newPath));
+          const wanted = hasSeries ? 'series' : 'movies';
+          const fitting = data.find((r: RemoteConfig) => r.mediaType === wanted);
+          setSelectedRemoteId((fitting || data[0]).id);
         }
       })
       .catch(console.error);
@@ -87,11 +102,18 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
 
   const scanRemote = async (id: string) => {
     setIsScanning(true);
+    setLibrary([]);      // drop the previous server's library first, never match against it
+    setAutoLookup({});
+    lookupRequested.current.clear();
     try {
       const res = await fetch(`/api/remotes/${id}/scan`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
-        setLibrary(data);
+        // Ignore a late answer for a server that is no longer selected.
+        setSelectedRemoteId(current => {
+          if (current === id) setLibrary(data);
+          return current;
+        });
       }
     } catch (e) {
       console.error(e);
@@ -134,12 +156,14 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       const originalTitle = title;
       const manualVal = manualIds[originalTitle];
       let manualIdStr = '';
+      let pickedMediaType: string | undefined;
       
       if (manualVal) {
          if (typeof manualVal === 'string') {
            manualIdStr = manualVal;
          } else {
            manualIdStr = manualVal.id;
+           pickedMediaType = manualVal.mediaType;
            if (manualVal.title) {
              title = manualVal.title.replace(/[._]/g, ' ').trim();
            }
@@ -155,8 +179,9 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       }
 
       // Find in library by ID
+      const hasProviderId = !!(tmdbId || imdbId);
       let libItem = null;
-      if (tmdbId || imdbId) {
+      if (hasProviderId) {
         libItem = library.find(item => (tmdbId && item.tmdbId === tmdbId) || (imdbId && item.imdbId === imdbId));
       }
       
@@ -164,11 +189,14 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       
       if (libItem) {
         matchType = 'id';
-      } else {
-        // Find by name
+      } else if (!hasProviderId) {
+        // Fuzzy matching only WITHOUT an own ID. With one, a folder carrying a different ID is
+        // provably a different title - that is how "Die zwei Türme" landed in the "Gefährten" folder.
+        const fileYear = year.replace(/[()]/g, '');
         let bestScore = 0;
         let bestItem = null;
         for (const item of library) {
+          if (fileYear && item.year && item.year !== fileYear) continue;   // different year, different title
           const itemTitle = item.title || item.folderName;
           const score = stringSimilarity(title, itemTitle);
           if (score > bestScore) {
@@ -177,14 +205,22 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
           }
         }
         
-        if (bestScore >= 0.85) {
+        if (bestScore >= 0.92) {
           matchType = 'name-high';
           libItem = bestItem;
-        } else if (bestScore >= 0.6) {
+        } else if (bestScore >= 0.8) {
           matchType = 'name-low';
           libItem = bestItem;
         }
       }
+
+      // Does this file belong on this server at all?
+      const kind: MatchResult['kind'] = isEpisodePath(f.newPath) ? 'episode' : 'movie';
+      let mediaMismatch: MatchResult['mediaMismatch'] = null;
+      if (selectedRemote.mediaType === 'series' && kind === 'movie') mediaMismatch = 'kind';
+      else if (selectedRemote.mediaType === 'movies' && kind === 'episode') mediaMismatch = 'kind';
+      else if (pickedMediaType === 'movie' && selectedRemote.mediaType === 'series') mediaMismatch = 'tmdb';
+      else if (pickedMediaType === 'tv' && selectedRemote.mediaType === 'movies') mediaMismatch = 'tmdb';
       
       let targetPath = '';
       if (libItem) {
@@ -219,7 +255,9 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
         matchType,
         seriesTitle: originalTitle, // keep original generic title for dict key
         providerId: manualIdStr || '',
-        selected: true,
+        kind,
+        mediaMismatch,
+        selected: !mediaMismatch,
         status: 'pending',
         progress: 0
       };
@@ -237,13 +275,67 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                     status: existing.status,
                     progress: existing.progress,
                     message: existing.message,
-                    selected: existing.selected
+                    // A mismatching row stays off; one that just became valid is switched back on.
+                    selected: nm.mediaMismatch ? false : (existing.mediaMismatch ? true : existing.selected)
                 };
             }
             return nm;
         });
     });
   }, [files, library, selectedRemote, manualIds, customPaths]);
+
+  // Look the TMDB ID up automatically for files that carry none: search by title, take a hit
+  // that clearly matches (title + year) and apply just the ID; weaker hits are offered as a suggestion.
+  useEffect(() => {
+    if (!tmdbApiKeySet || !selectedRemote || isUploading) return;
+
+    const open = matches
+      .filter(m => m.matchType === 'new' && m.status === 'pending' && m.seriesTitle)
+      .filter(m => !manualIds[m.seriesTitle!] && !lookupRequested.current.has(m.seriesTitle!))
+      .slice(0, 5);
+    if (open.length === 0) return;
+
+    (async () => {
+      for (const m of open) {
+        const key = m.seriesTitle!;
+        if (lookupRequested.current.has(key)) continue;
+        lookupRequested.current.add(key);
+        setAutoLookup(prev => ({ ...prev, [key]: 'pending' }));
+        const type = selectedRemote.mediaType === 'series' ? 'tv'
+                   : selectedRemote.mediaType === 'movies' ? 'movie' : 'multi';
+        try {
+          const res = await fetch(`/api/tmdb/search?query=${encodeURIComponent(key)}&type=${type}`);
+          if (!res.ok) { if (alive.current) setAutoLookup(prev => ({ ...prev, [key]: 'none' })); continue; }
+          const data = await res.json();
+          const fileYear = (m.targetPath.match(/\((\d{4})\)/) || [])[1] || '';
+
+          let best: any = null, bestScore = 0;
+          for (const r of (data.results || []).slice(0, 8)) {
+            let score = stringSimilarity(key, r.title || '');
+            if (fileYear && r.year) score += (r.year === fileYear ? 0.1 : -0.3);
+            if (score > bestScore) { bestScore = score; best = r; }
+          }
+          if (!alive.current) return;
+
+          if (!best || bestScore < 0.6) {
+            setAutoLookup(prev => ({ ...prev, [key]: 'none' }));
+            continue;
+          }
+          const yearOk = !fileYear || !best.year || best.year === fileYear;
+          const apply = bestScore >= 0.85 && yearOk;
+          setAutoLookup(prev => ({ ...prev, [key]: { id: best.id, title: best.title, year: best.year, mediaType: best.mediaType, applied: apply } }));
+          if (apply) {
+            // Only the ID - the local title keeps its spelling so the target path stays predictable.
+            setManualIds(prev => (prev[key] ? prev : { ...prev, [key]: { id: `tmdbid-${best.id}`, mediaType: best.mediaType } }));
+          }
+        } catch {
+          if (alive.current) setAutoLookup(prev => ({ ...prev, [key]: 'none' }));
+        }
+      }
+    })();
+  }, [matches, manualIds, tmdbApiKeySet, selectedRemote, isUploading]);
+
+  const mismatchCount = matches.filter(m => m.mediaMismatch).length;
 
   const handleUpload = async () => {
     setIsUploading(true);
@@ -252,6 +344,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i];
       if (!match.selected || match.status === 'success' || match.status === 'skipped') continue;
+      if (match.mediaMismatch) continue;   // never upload a movie to a series server (or vice versa)
       
       setMatches(prev => prev.map((m, idx) => idx === i ? { ...m, status: 'uploading', progress: 0 } : m));
       
@@ -447,6 +540,18 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
           )}
         </div>
 
+        {mismatchCount > 0 && (
+          <div className="mx-6 mb-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800 dark:text-red-300">
+              <div className="font-semibold">{t('upload.mismatchTitle', { count: mismatchCount })}</div>
+              <div className="text-xs mt-0.5">
+                {selectedRemote?.mediaType === 'series' ? t('upload.mismatchHintSeries') : t('upload.mismatchHintMovies')}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-0">
           <table className="w-full text-left border-collapse text-sm">
             <thead className="bg-gray-100 dark:bg-gray-800 sticky top-0 z-10 shadow-sm">
@@ -473,7 +578,8 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                       type="checkbox" 
                       checked={match.selected}
                       onChange={e => setMatches(prev => prev.map((m, idx) => idx === index ? { ...m, selected: e.target.checked } : m))}
-                      disabled={isUploading || match.status === 'success'}
+                      disabled={isUploading || match.status === 'success' || !!match.mediaMismatch}
+                      title={match.mediaMismatch ? t('upload.mismatchRow') : undefined}
                       className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 mt-1"
                     />
                   </td>
@@ -485,7 +591,15 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                       <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${getBadgeColor(match.matchType)}`}>
                         {getBadgeText(match.matchType)}
                       </span>
+                      {match.mediaMismatch && (
+                        <span className="ml-2 text-[10px] uppercase px-1.5 py-0.5 rounded font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                          {match.kind === 'movie' ? t('upload.badgeMovie') : t('upload.badgeEpisode')}
+                        </span>
+                      )}
                     </div>
+                    {match.mediaMismatch && (
+                      <div className="mt-1 text-xs text-red-700 dark:text-red-400">{t('upload.mismatchRow')}</div>
+                    )}
                   </td>
                   <td className="p-3 align-top">
                     {match.matchType === 'new' && match.status === 'pending' && match.seriesTitle && (
@@ -505,13 +619,37 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                              }}
                           />
                         )}
-                        {!manualIds[match.seriesTitle] && (
+                        {!manualIds[match.seriesTitle] && autoLookup[match.seriesTitle] !== 'pending' && (
                            <div title={t("upload.noIdWarning")} className="text-amber-500 cursor-help">
                               <AlertTriangle className="w-4 h-4" />
                            </div>
                         )}
+                        {autoLookup[match.seriesTitle] === 'pending' && (
+                           <RefreshCw className="w-4 h-4 text-primary-500 animate-spin" />
+                        )}
                       </div>
                     )}
+                    {(() => {
+                      const hit = match.seriesTitle ? autoLookup[match.seriesTitle] : undefined;
+                      if (!hit || hit === 'pending' || hit === 'none' || match.status !== 'pending') return null;
+                      const label = `${hit.title}${hit.year ? ` (${hit.year})` : ''} · ${hit.mediaType === 'tv' ? t('upload.kindSeries') : t('upload.kindMovie')}`;
+                      return (
+                        <div className="mb-2 text-xs flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                          <span className="px-1.5 py-0.5 rounded bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-300 font-medium">TMDB</span>
+                          <span className="truncate">{label}</span>
+                          {hit.applied ? (
+                            <span className="text-green-600 dark:text-green-400">{t('upload.tmdbApplied')}</span>
+                          ) : (
+                            <button
+                              onClick={() => setManualIds(prev => ({ ...prev, [match.seriesTitle!]: { id: `tmdbid-${hit.id}`, mediaType: hit.mediaType } }))}
+                              className="underline hover:text-primary-600 dark:hover:text-primary-400"
+                            >
+                              {t('upload.tmdbApply')}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {match.status === 'pending' || match.status === 'error' ? (
                       <input 
                         type="text" 

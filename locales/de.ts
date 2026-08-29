@@ -2,6 +2,16 @@ import { Translations } from './en';
 
 export const de: Translations = {
   upload: {
+    mismatchTitle: '{{count}} Datei(en) passen nicht zu diesem Server',
+    mismatchHintSeries: 'Auf einem Serien-Server werden nur Episoden (SxxEyy) hochgeladen. Wähle oben den Filme-Server aus.',
+    mismatchHintMovies: 'Auf einem Filme-Server werden nur Filme hochgeladen. Wähle oben den Serien-Server aus.',
+    mismatchRow: 'Passt nicht zum Medientyp des Ziel-Servers – Upload gesperrt.',
+    badgeMovie: 'Film',
+    badgeEpisode: 'Episode',
+    kindMovie: 'Film',
+    kindSeries: 'Serie',
+    tmdbApplied: 'automatisch übernommen',
+    tmdbApply: 'übernehmen',
     title: 'Zum Server hochladen',
     selectRemote: 'Ziel-Server auswählen',
     scanning: 'Bibliothek wird gescannt...',

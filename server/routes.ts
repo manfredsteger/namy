@@ -1,4 +1,5 @@
 import express from 'express';
+import { Transform } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import busboy from 'busboy';
 import path from 'path';
@@ -60,6 +61,31 @@ router.put('/settings', async (req, res) => {
   }
   await saveSettings(settings);
   res.json({ tmdbApiKeySet: !!settings.tmdbApiKey });
+});
+
+router.get('/tmdb/lookup', async (req, res) => {
+  const raw = String(req.query.id || '');
+  const id = raw.replace(/^tmdbid-/i, '').trim();
+  if (!/^\d+$/.test(id)) return res.status(400).json({ message: 'Numerische TMDB-ID erforderlich' });
+
+  const settings = await getSettings();
+  const apiKey = settings.tmdbApiKey;
+  if (!apiKey) return res.status(400).json({ message: 'TMDB API key not configured' });
+
+  for (const kind of ['movie', 'tv'] as const) {
+    try {
+      const r = await fetch(`https://api.themoviedb.org/3/${kind}/${id}?api_key=${apiKey}&language=de-DE`);
+      if (!r.ok) continue;
+      const d: any = await r.json();
+      return res.json({
+        id: d.id,
+        mediaType: kind,
+        title: d.title || d.name,
+        year: ((d.release_date || d.first_air_date || '').split('-')[0]) || null
+      });
+    } catch (e) { /* try the next kind */ }
+  }
+  res.status(404).json({ message: `TMDB-ID ${id} nicht gefunden` });
 });
 
 router.get('/tmdb/search', async (req, res) => {
@@ -276,6 +302,8 @@ router.post('/remotes/:id/upload', async (req, res) => {
   let client: ReturnType<typeof createRemoteClient> | null = null;
   let fileProcessed = false;
   let hasError = false;
+  let uploadedPath = '';
+  let uploadedSize = 0;
   let uploadPromise: Promise<void> | null = null;
 
   bb.on('field', (name, val) => {
@@ -292,6 +320,8 @@ router.post('/remotes/:id/upload', async (req, res) => {
         if (!res.headersSent) res.status(400).json({ message: 'targetPath field must come before file' });
         return;
       }
+
+      let bytesSent = 0;
 
       try {
         client = createRemoteClient(remote);
@@ -317,7 +347,26 @@ router.post('/remotes/:id/upload', async (req, res) => {
           }
         }
 
-        await client.uploadStream(fileStream, fullDestPath);
+        // Count the bytes in a pass-through placed directly before the upload. Attaching a
+        // 'data' listener earlier would start the stream while we are still talking to the server.
+        const counter = new Transform({
+          transform(chunk, _enc, cb) { bytesSent += chunk.length; cb(null, chunk); }
+        });
+        fileStream.pipe(counter);
+
+        await client.uploadStream(counter, fullDestPath);
+
+        // Never report success on trust alone: read the file back from the server.
+        const verify = await client.exists(fullDestPath);
+        if (!verify.exists || verify.isDirectory) {
+          throw new Error(`Datei nach dem Upload nicht auffindbar: ${fullDestPath}`);
+        }
+        if (bytesSent > 0 && verify.size !== bytesSent) {
+          throw new Error(`Größe stimmt nicht: ${verify.size} von ${bytesSent} Bytes auf dem Server (${fullDestPath})`);
+        }
+
+        uploadedPath = fullDestPath;
+        uploadedSize = verify.size;
         fileProcessed = true;
         await client.disconnect();
         
@@ -337,7 +386,7 @@ router.post('/remotes/:id/upload', async (req, res) => {
     }
     
     if (!hasError && fileProcessed) {
-      if (!res.headersSent) res.json({ message: 'Upload successful' });
+      if (!res.headersSent) res.json({ message: 'Upload successful', path: uploadedPath, size: uploadedSize });
     } else if (!hasError && !fileProcessed) {
       if (!res.headersSent) res.status(400).json({ message: 'No file uploaded' });
     }

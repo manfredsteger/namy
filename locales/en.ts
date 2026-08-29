@@ -1,5 +1,15 @@
 export const en = {
   upload: {
+    mismatchTitle: '{{count}} file(s) do not fit this server',
+    mismatchHintSeries: 'A series server only takes episodes (SxxEyy). Pick the movie server above.',
+    mismatchHintMovies: 'A movie server only takes movies. Pick the series server above.',
+    mismatchRow: 'Does not match the media type of the target server - upload blocked.',
+    badgeMovie: 'Movie',
+    badgeEpisode: 'Episode',
+    kindMovie: 'Movie',
+    kindSeries: 'Series',
+    tmdbApplied: 'applied automatically',
+    tmdbApply: 'apply',
     title: 'Upload to Server',
     selectRemote: 'Select Target Server',
     scanning: 'Scanning library...',
