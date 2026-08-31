@@ -1,4 +1,21 @@
 
+/** Cleaned-up music metadata, merged from embedded tags, file name and folder. */
+export interface AudioTags {
+  artist?: string;
+  albumArtist?: string;
+  album?: string;
+  title?: string;
+  track?: number;
+  trackTotal?: number;
+  disc?: number;
+  discTotal?: number;
+  year?: string;
+  /** True when the album came from a real tag - only then is the year trustworthy. */
+  albumFromTags?: boolean;
+  /** False when the file carried no readable tags and everything was guessed. */
+  hasTags?: boolean;
+}
+
 export interface ProcessedFile {
   id: string;
   originalPath: string;
@@ -10,6 +27,7 @@ export interface ProcessedFile {
   hasCollision?: boolean;
   handle?: any; // FileSystemFileHandle | FileSystemDirectoryHandle
   parentHandle?: any; // FileSystemDirectoryHandle
+  tags?: AudioTags; // audio files only
 }
 
 export type RuleType = 
@@ -21,6 +39,8 @@ export type RuleType =
   | 'suffix' 
   | 'jellyfin_movie' 
   | 'jellyfin_series' 
+  | 'music_flat'
+  | 'music_jellyfin'
   | 'custom_script';
 
 export interface Rule {
@@ -43,6 +63,8 @@ export interface Convention {
   name: string;
   script: string;
   requiresProviderCode?: boolean;
+  /** Shows the artist/album/year override panel in the sidebar. */
+  requiresMusicInfo?: boolean;
   rules?: Rule[];
 }
 

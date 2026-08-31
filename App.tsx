@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import { v4 as uuidv4 } from 'uuid';
@@ -14,7 +14,8 @@ import { Upload } from 'lucide-react';
 import { Server } from 'lucide-react';
 import RecipeBuilderModal from './components/RecipeBuilderModal';
 import { DownloadIcon, SettingsIcon, SparklesIcon } from './components/icons';
-import { ProcessedFile, Convention, Rule } from './types';
+import { ProcessedFile, Convention, Rule, AudioTags } from './types';
+import { isAudioPath, readEmbeddedTags, deriveAudioTags } from './services/audioMetadata';
 import { generateRenameScript } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { generateScriptFromRules } from './utils';
@@ -195,6 +196,78 @@ if (match) {
 
 return path;`,
   },
+  {
+    id: 'music-clean',
+    name: 'conventions.musicClean',
+    requiresMusicInfo: true,
+    script: `// Clean up music -> "Artist - Title.mp3"
+// \`tags\` holds the cleaned metadata (embedded tags + file name + folder), so this
+// recipe only has to lay out the name. The folder structure stays as it is.
+if (isDirectory) return path;
+const t = tags || {};
+if (!t.title) return path;   // not an audio file, or nothing usable was found
+
+// Characters that are illegal or awkward in file names on Windows/SMB shares.
+function safe(s) {
+  return (s || '')
+    .replace(/[\\/\\\\:*?"<>|]/g, ' ')
+    .replace(/\\s{2,}/g, ' ')
+    .replace(/^[\\s.]+|[\\s.]+$/g, '')
+    .trim();
+}
+
+const parts = path.split('/');
+const filename = parts.pop() || '';
+const dot = filename.lastIndexOf('.');
+const ext = dot > 0 ? filename.slice(dot).toLowerCase() : '';
+
+const title = safe(t.title);
+if (!title) return path;
+
+const artist = safe(t.artist || t.albumArtist);
+const track = t.track ? String(t.track).padStart(2, '0') + ' - ' : '';
+
+parts.push(track + (artist ? artist + ' - ' + title : title) + ext);
+return parts.join('/');`,
+  },
+  {
+    id: 'music-jellyfin',
+    name: 'conventions.musicJellyfin',
+    requiresMusicInfo: true,
+    script: `// Jellyfin Music -> "Artist/Album/01 - Title.mp3"
+if (isDirectory) return path;
+const t = tags || {};
+if (!t.title) return path;
+
+// Characters that are illegal or awkward in file names on Windows/SMB shares.
+function safe(s) {
+  return (s || '')
+    .replace(/[\\/\\\\:*?"<>|]/g, ' ')
+    .replace(/\\s{2,}/g, ' ')
+    .replace(/^[\\s.]+|[\\s.]+$/g, '')
+    .trim();
+}
+
+const filename = path.split('/').pop() || '';
+const dot = filename.lastIndexOf('.');
+const ext = dot > 0 ? filename.slice(dot).toLowerCase() : '';
+
+const title = safe(t.title);
+if (!title) return path;
+
+const artist = safe(t.albumArtist || t.artist) || 'Unknown Artist';
+const album = safe(t.album);
+// The year only rides along with a real album tag - on scraped files it is the
+// upload year of the video, which says nothing about the release.
+const year = (t.albumFromTags && t.year) ? ' (' + t.year + ')' : '';
+const disc = (t.discTotal && t.discTotal > 1 && t.disc) ? 'CD' + t.disc + '/' : '';
+const track = t.track ? String(t.track).padStart(2, '0') + ' - ' : '';
+// On a compilation the track artist differs from the album artist - name it.
+const guest = (t.artist && safe(t.artist) !== artist) ? safe(t.artist) + ' - ' : '';
+
+const albumFolder = album ? album + year + '/' : '';
+return artist + '/' + albumFolder + disc + track + guest + title + ext;`,
+  },
 ];
 
 
@@ -209,6 +282,13 @@ const App: React.FC = () => {
   const [ignoreList, setIgnoreList] = useState<string>('.DS_Store\nthumbs.db');
   const [tmdbApiKeySet, setTmdbApiKeySet] = useState<boolean>(false);
   const [providerCode, setProviderCode] = useState<string>('');
+  // Cleaned music metadata per file id, filled in asynchronously after a drop.
+  const [audioTags, setAudioTags] = useState<Record<string, AudioTags>>({});
+  const [tagProgress, setTagProgress] = useState<{ done: number; total: number } | null>(null);
+  // Manual override for a whole batch, for scraped files whose tags are useless.
+  const [musicInfo, setMusicInfo] = useState({ artist: '', album: '', year: '' });
+  // Each drop gets a number so a slow tag run cannot overwrite a newer one.
+  const tagRun = useRef(0);
   const [scanMessage, setScanMessage] = useState<{ text: string; type: 'info' | 'success' } | null>(null);
   
   
@@ -283,13 +363,80 @@ const App: React.FC = () => {
     }
   }, [ignoreList, t]);
 
+  // Reads the tags of every audio file in the background. Video-only drops never
+  // touch the parser (it is a lazy import inside readEmbeddedTags).
+  const loadAudioTags = useCallback(async (list: ProcessedFile[]) => {
+    const run = ++tagRun.current;
+    setAudioTags({});
+    const audio = list.filter(f => !f.isDirectory && isAudioPath(f.originalPath));
+    if (audio.length === 0) {
+      setTagProgress(null);
+      return;
+    }
+    setTagProgress({ done: 0, total: audio.length });
+
+    const collected: Record<string, AudioTags> = {};
+    let cursor = 0;
+    let done = 0;
+
+    const worker = async () => {
+      while (cursor < audio.length) {
+        const f = audio[cursor++];
+        let embedded = null;
+        try {
+          const blob = f.file || (f.handle ? await f.handle.getFile() : null);
+          if (blob) embedded = await readEmbeddedTags(blob);
+        } catch (e) {
+          // Unreadable file - deriveAudioTags falls back to name and folder.
+        }
+        if (run !== tagRun.current) return;   // a newer drop took over
+        collected[f.id] = deriveAudioTags(f.originalPath, embedded);
+        done++;
+        // Flush in batches so the preview fills in while a long list is still reading.
+        if (done % 20 === 0) {
+          setAudioTags({ ...collected });
+          setTagProgress({ done, total: audio.length });
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(6, audio.length) }, worker));
+    if (run !== tagRun.current) return;
+    setAudioTags({ ...collected });
+    setTagProgress(null);
+  }, []);
+
+  // What the batch looks like overall - shown as a hint next to the override fields.
+  const detectedMusic = useMemo(() => {
+    const values: AudioTags[] = Object.values(audioTags);
+    if (values.length === 0) return null;
+    const mostCommon = (pick: (t: AudioTags) => string | undefined) => {
+      const counts = new Map<string, number>();
+      for (const v of values) {
+        const key = pick(v);
+        if (key) counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      let best = '';
+      let bestCount = 0;
+      counts.forEach((count, key) => { if (count > bestCount) { bestCount = count; best = key; } });
+      return best;
+    };
+    return {
+      artist: mostCommon(v => v.albumArtist || v.artist),
+      album: mostCommon(v => v.album),
+      year: mostCommon(v => v.year),
+      count: values.length,
+      untagged: values.filter(v => !v.hasTags).length,
+    };
+  }, [audioTags]);
+
   // This is the core renaming logic. It runs whenever files, script or ignore list changes.
   const processedFiles = useMemo(() => {
     if (files.length === 0) return [];
     
-    let renameFn: (path: string, isDirectory: boolean, providerCode: string) => string;
+    let renameFn: (path: string, isDirectory: boolean, providerCode: string, tags?: AudioTags) => string;
     try {
-      renameFn = new Function('path', 'isDirectory', 'providerCode', script) as (path: string, isDirectory: boolean, providerCode: string) => string;
+      renameFn = new Function('path', 'isDirectory', 'providerCode', 'tags', script) as (path: string, isDirectory: boolean, providerCode: string, tags?: AudioTags) => string;
     } catch (e) {
       console.error("Script error:", e);
       // If script is invalid, return files with original path as new path
@@ -300,6 +447,28 @@ const App: React.FC = () => {
       .split('\n')
       .map(p => p.trim().toLowerCase())
       .filter(p => p.length > 0);
+
+    // Typed-in values beat what was read out of the files.
+    const override = {
+      artist: musicInfo.artist.trim(),
+      album: musicInfo.album.trim(),
+      year: musicInfo.year.trim(),
+    };
+    const hasOverride = !!(override.artist || override.album || override.year);
+    const tagsFor = (id: string): AudioTags | undefined => {
+      const base = audioTags[id];
+      if (!base || !hasOverride) return base;
+      return {
+        ...base,
+        artist: override.artist || base.artist,
+        albumArtist: override.artist || base.albumArtist,
+        album: override.album || base.album,
+        // A typed-in album makes the detected year meaningless (it belongs to the
+        // album that was detected), so it only survives if it was typed in too.
+        year: override.year || (override.album ? '' : base.year),
+        albumFromTags: (override.album || override.year) ? true : base.albumFromTags,
+      };
+    };
 
     let normalizedProviderCode = providerCode.trim();
     if (/^\d+$/.test(normalizedProviderCode)) normalizedProviderCode = `tmdbid-${normalizedProviderCode}`;
@@ -313,13 +482,14 @@ const App: React.FC = () => {
         return !isIgnored;
       })
       .map(file => {
+        const tags = tagsFor(file.id);
         try {
-          const newPath = renameFn(file.originalPath, file.isDirectory, normalizedProviderCode);
-          return { ...file, newPath };
+          const newPath = renameFn(file.originalPath, file.isDirectory, normalizedProviderCode, tags);
+          return { ...file, newPath, tags };
         } catch (e) {
           console.error(`Error processing file "${file.originalPath}":`, e);
           // If an error occurs for one file, don't change its path
-          return { ...file, newPath: file.originalPath };
+          return { ...file, newPath: file.originalPath, tags };
         }
       });
 
@@ -338,7 +508,7 @@ const App: React.FC = () => {
     }
 
     return result;
-  }, [files, script, ignoreList, providerCode]);
+  }, [files, script, ignoreList, providerCode, audioTags, musicInfo]);
   
   
   const finalizeFiles = useCallback((processed: ProcessedFile[]) => {
@@ -353,12 +523,17 @@ const App: React.FC = () => {
       let detectedAudio = '';
 
       const mediaExts = ['.mp4', '.mkv', '.avi', '.m4v', '.ts'];
+      let audioCount = 0;
+      let videoCount = 0;
       for (const f of processed) {
          if (f.isDirectory) continue;
          const name = f.originalPath.split('/').pop() || '';
          const lowerName = name.toLowerCase();
 
+         if (isAudioPath(lowerName)) audioCount++;
+
          if (mediaExts.some(ext => lowerName.endsWith(ext))) {
+             videoCount++;
              if (/[sS]\d{2}[eE]\d{2}/.test(name)) {
                  detectedType = 'series';
                  const match = name.match(/^(.*?)[sS]\d{2}/);
@@ -390,7 +565,15 @@ const App: React.FC = () => {
       const metadataParts = [detectedResolution, detectedCodec, detectedAudio].filter(Boolean);
       const metadataStr = metadataParts.length > 0 ? metadataParts.join(' ') : '';
 
-      if (detectedType === 'series') {
+      // Music wins when the drop is mostly audio: a stray trailer next to an album
+      // must not switch the whole batch to the movie recipe.
+      if (audioCount > videoCount) {
+          const conv = defaultConventions.find(c => c.id === 'music-clean');
+          if (conv) {
+              setScript(conv.script);
+              setScanMessage({ text: t('app.scan.musicDetected').replace('{{count}}', String(audioCount)), type: 'success' });
+          }
+      } else if (detectedType === 'series') {
           const conv = defaultConventions.find(c => c.id === 'jellyfin-series');
           if (conv) {
               let finalScript = conv.script;
@@ -422,7 +605,8 @@ const App: React.FC = () => {
 
       setFiles(processed);
       setIsProcessing(false);
-  }, [t]);
+      void loadAudioTags(processed);
+  }, [t, loadAudioTags]);
 
   const scanDirectory = async (dirHandle: any, path: string = '', processed: ProcessedFile[] = [], dirPaths: Set<string> = new Set()) => {
     for await (const entry of dirHandle.values()) {
@@ -899,6 +1083,10 @@ const App: React.FC = () => {
   const handleStartOver = () => {
     setFiles([]);
     setError(null);
+    tagRun.current++;
+    setAudioTags({});
+    setTagProgress(null);
+    setMusicInfo({ artist: '', album: '', year: '' });
   }
 
   return (
@@ -915,6 +1103,9 @@ const App: React.FC = () => {
           providerCode={providerCode}
           onProviderCodeChange={setProviderCode}
           onOpenVisualBuilder={() => setIsVisualBuilderOpen(true)}
+          musicInfo={musicInfo}
+          onMusicInfoChange={setMusicInfo}
+          detectedMusic={detectedMusic}
         />
       )}
       <main className="flex-1 flex flex-col p-4 md:p-8 overflow-hidden relative">
@@ -1026,6 +1217,16 @@ const App: React.FC = () => {
                   <button onClick={() => setScanMessage(null)} className="opacity-70 hover:opacity-100 transition-opacity">
                     <span className="text-xl">&times;</span>
                   </button>
+                </div>
+              )}
+              {tagProgress && (
+                <div className="mb-4 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 text-gray-200 flex items-center gap-3 animate-fade-in">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-500 flex-shrink-0"></div>
+                  <span className="font-medium text-sm">
+                    {t('app.scan.readingTags')
+                      .replace('{{done}}', String(tagProgress.done))
+                      .replace('{{total}}', String(tagProgress.total))}
+                  </span>
                 </div>
               )}
               <div className="flex-1 overflow-hidden">

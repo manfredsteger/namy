@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from '../hooks/useTranslation';
 import { ProcessedFile, RemoteConfig, ScanResult } from '../types';
 import { TmdbSearchDropdown } from './TmdbSearchDropdown';
+import { isAudioPath } from '../services/audioMetadata';
 import { Upload, X, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, Play, StopCircle, RefreshCw } from 'lucide-react';
 
 // Simple Levenshtein distance
@@ -48,7 +49,7 @@ interface MatchResult {
   newName: string;
   targetPath: string;
   matchType: 'id' | 'name-high' | 'name-low' | 'new';
-  kind: 'episode' | 'movie';
+  kind: 'episode' | 'movie' | 'music';
   mediaMismatch: 'kind' | 'tmdb' | null;
   seriesTitle?: string;
   providerId?: string;
@@ -86,7 +87,8 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
           // Auto-select by what is actually being uploaded, not by list order:
           // a movie must not default to the series server.
           const hasSeries = files.some(f => isEpisodePath(f.newPath));
-          const wanted = hasSeries ? 'series' : 'movies';
+          const isMusicBatch = files.filter(f => !f.isDirectory).every(f => isAudioPath(f.newPath));
+          const wanted = isMusicBatch ? 'music' : hasSeries ? 'series' : 'movies';
           const fitting = data.find((r: RemoteConfig) => r.mediaType === wanted);
           setSelectedRemoteId((fitting || data[0]).id);
         }
@@ -131,6 +133,27 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
     const newMatches: MatchResult[] = files.filter(f => !f.isDirectory).map(f => {
       const parts = f.newPath.split('/');
       const name = parts[parts.length - 1] || f.newPath;
+
+      // Music is identified by tags, not by TMDB, and the recipe has already built
+      // the whole relative path - upload it exactly as the preview shows it.
+      if (isAudioPath(f.newPath) || selectedRemote.mediaType === 'music') {
+        const isAudio = isAudioPath(f.newPath);
+        const mismatch = (isAudio && selectedRemote.mediaType !== 'music') ||
+                         (!isAudio && selectedRemote.mediaType === 'music') ? 'kind' as const : null;
+        return {
+          fileId: f.id,
+          originalName: f.originalPath,
+          newName: name,
+          targetPath: customPaths[f.id] || f.newPath,
+          matchType: 'new' as const,
+          kind: (isAudio ? 'music' : isEpisodePath(f.newPath) ? 'episode' : 'movie') as MatchResult['kind'],
+          mediaMismatch: mismatch,
+          selected: !mismatch,
+          status: 'pending' as const,
+          progress: 0,
+        };
+      }
+
       // Without a folder segment the file name itself is the basis for the folder name —
       // strip the extension first, otherwise ".mp4" ends up inside the folder title.
       const folderNamePart = parts.length > 1 ? parts[0] : name.replace(/\.[^/.]+$/, '');
@@ -215,9 +238,10 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       }
 
       // Does this file belong on this server at all?
-      const kind: MatchResult['kind'] = isEpisodePath(f.newPath) ? 'episode' : 'movie';
+      const kind: MatchResult['kind'] = isAudioPath(f.newPath) ? 'music' : isEpisodePath(f.newPath) ? 'episode' : 'movie';
       let mediaMismatch: MatchResult['mediaMismatch'] = null;
-      if (selectedRemote.mediaType === 'series' && kind === 'movie') mediaMismatch = 'kind';
+      if (kind === 'music' && selectedRemote.mediaType !== 'music') mediaMismatch = 'kind';
+      else if (selectedRemote.mediaType === 'series' && kind === 'movie') mediaMismatch = 'kind';
       else if (selectedRemote.mediaType === 'movies' && kind === 'episode') mediaMismatch = 'kind';
       else if (pickedMediaType === 'movie' && selectedRemote.mediaType === 'series') mediaMismatch = 'tmdb';
       else if (pickedMediaType === 'tv' && selectedRemote.mediaType === 'movies') mediaMismatch = 'tmdb';
@@ -539,7 +563,8 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
             <div className="text-sm text-red-800 dark:text-red-300">
               <div className="font-semibold">{t('upload.mismatchTitle', { count: mismatchCount })}</div>
               <div className="text-xs mt-0.5">
-                {selectedRemote?.mediaType === 'series' ? t('upload.mismatchHintSeries') : t('upload.mismatchHintMovies')}
+                {selectedRemote?.mediaType === 'music' ? t('upload.mismatchHintMusic')
+                  : selectedRemote?.mediaType === 'series' ? t('upload.mismatchHintSeries') : t('upload.mismatchHintMovies')}
               </div>
             </div>
           </div>
@@ -586,7 +611,8 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
                       </span>
                       {match.mediaMismatch && (
                         <span className="ml-2 text-[10px] uppercase px-1.5 py-0.5 rounded font-bold bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
-                          {match.kind === 'movie' ? t('upload.badgeMovie') : t('upload.badgeEpisode')}
+                          {match.kind === 'music' ? t('upload.badgeMusic')
+                            : match.kind === 'movie' ? t('upload.badgeMovie') : t('upload.badgeEpisode')}
                         </span>
                       )}
                     </div>

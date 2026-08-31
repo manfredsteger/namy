@@ -2,6 +2,8 @@ import { Translations } from './en';
 
 export const de: Translations = {
   upload: {
+    mismatchHintMusic: 'Auf einen Musik-Server gehören nur Audiodateien. Wähle oben einen anderen Server aus.',
+    badgeMusic: 'Musik',
     tmdbUndo: 'verwerfen',
     mismatchTitle: '{{count}} Datei(en) passen nicht zu diesem Server',
     mismatchHintSeries: 'Auf einem Serien-Server werden nur Episoden (SxxEyy) hochgeladen. Wähle oben den Filme-Server aus.',
@@ -105,6 +107,8 @@ export const de: Translations = {
     scan: {
       seriesDetected: 'TV-Serien erkannt! Rezept "Jellyfin Serien" automatisch ausgewählt.',
       movieDetected: 'Filme erkannt! Rezept "Jellyfin Filme" automatisch ausgewählt.',
+      musicDetected: 'Musik erkannt ({{count}} Dateien)! Rezept "Musik aufräumen" automatisch ausgewählt.',
+      readingTags: 'Musik-Tags werden gelesen… {{done}} / {{total}}',
       titleExtracted: 'Möglicher Titel gefunden: '
     },
     directMode: {
@@ -157,6 +161,15 @@ export const de: Translations = {
     close: 'Schließen',
   },
   sidebar: {
+    musicInfo: {
+      title: 'Interpret / Album',
+      description: 'Nur nötig, wenn die Dateien keine brauchbaren Tags haben. Was hier steht, überschreibt die erkannten Werte für den ganzen Stapel.',
+      artist: 'Interpret',
+      album: 'Album',
+      year: 'Jahr',
+      detected: 'Erkannt: {{artist}} · {{album}}',
+      untagged: '{{count}} ohne Tags'
+    },
     title: 'Umbenennungs-Rezepte',
     ai: {
       title: 'Mit KI generieren',
@@ -218,6 +231,8 @@ export const de: Translations = {
     collisionWarning: 'Warnung: Mehrere Dateien haben denselben neuen Pfad. Dies führt beim Zippen zum Überschreiben!'
   },
   conventions: {
+    musicClean: 'Musik aufräumen (Interpret - Titel)',
+    musicJellyfin: 'Jellyfin Musik (Interpret/Album/Titel)',
     webSafe: 'Web-sicher (Kleinbuchstaben, Bindestriche)',
     removeSpaces: 'Leerzeichen entfernen',
     renameSeries: 'Serien umbenennen (SxxExx)',

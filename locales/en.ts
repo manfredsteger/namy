@@ -1,5 +1,7 @@
 export const en = {
   upload: {
+    mismatchHintMusic: 'A music server only takes audio files. Pick a different server above.',
+    badgeMusic: 'Music',
     tmdbUndo: 'discard',
     mismatchTitle: '{{count}} file(s) do not fit this server',
     mismatchHintSeries: 'A series server only takes episodes (SxxEyy). Pick the movie server above.',
@@ -103,6 +105,8 @@ export const en = {
     scan: {
       seriesDetected: 'TV Series detected! Auto-selected "Jellyfin Series" recipe.',
       movieDetected: 'Movies detected! Auto-selected "Jellyfin Movies" recipe.',
+      musicDetected: 'Music detected ({{count}} files)! Auto-selected the "Clean up music" recipe.',
+      readingTags: 'Reading music tags… {{done}} / {{total}}',
       titleExtracted: 'Found potential title: '
     },
     directMode: {
@@ -155,6 +159,15 @@ export const en = {
     close: 'Close',
   },
   sidebar: {
+    musicInfo: {
+      title: 'Artist / Album',
+      description: 'Only needed when the files carry no usable tags. Whatever you type here overrides the detected values for the whole batch.',
+      artist: 'Artist',
+      album: 'Album',
+      year: 'Year',
+      detected: 'Detected: {{artist}} · {{album}}',
+      untagged: '{{count}} without tags'
+    },
     title: 'Renaming Conventions',
     ai: {
       title: 'Generate with AI',
@@ -216,6 +229,8 @@ export const en = {
     collisionWarning: 'Warning: Multiple files resolve to this same path. This will cause overwrites when zipping!'
   },
   conventions: {
+    musicClean: 'Clean up music (Artist - Title)',
+    musicJellyfin: 'Jellyfin Music (Artist/Album/Title)',
     webSafe: 'Web Safe (lowercase, hyphenated)',
     removeSpaces: 'Remove Spaces',
     renameSeries: 'Rename TV Series (SxxExx)',

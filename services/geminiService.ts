@@ -16,10 +16,12 @@ export const generateRenameScript = async (prompt: string): Promise<string> => {
   const fullPrompt = `
 You are an expert JavaScript developer. Your task is to write the body of a JavaScript function that renames file paths.
 
-The function signature is: (path, isDirectory) => string
+The function signature is: (path, isDirectory, providerCode, tags) => string
 
 - \`path\`: A string representing the original file or directory path (e.g., "My Documents/Photos_2024/IMG_001.JPG"). Paths use forward slashes as separators.
 - \`isDirectory\`: A boolean that is \`true\` if the path is for a directory, and \`false\` if it is for a file.
+- \`providerCode\`: An optional string like "tmdbid-1234", only set for media conventions.
+- \`tags\`: For audio files, an object with the cleaned music metadata: \`{ artist, albumArtist, album, title, track, disc, discTotal, year, albumFromTags }\`. Undefined for everything else, so always guard with \`tags &&\`.
 - The function MUST return a new string representing the renamed path.
 - You can only use standard browser-compatible JavaScript (ES2020). Do not use any Node.js-specific APIs like \`fs\` or \`path\`.
 - Manipulate the path string to achieve the desired renaming. Common operations involve \`.split('/')\`, \`.join('/')\`, string replacement, and changing case.

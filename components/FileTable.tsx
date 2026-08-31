@@ -49,14 +49,14 @@ const FileTable: React.FC<FileTableProps> = ({ files }) => {
                   <div className="flex items-center">
                     <span style={{ paddingLeft: `${file.depth * 20}px` }}></span>
                     {file.isDirectory ? <FolderIcon className="mr-2 text-primary-500 flex-shrink-0" /> : <FileIcon className="mr-2 text-gray-600 flex-shrink-0" />}
-                    <span className="truncate">{getFileName(file.originalPath)}</span>
+                    <span className="truncate" title={file.originalPath}>{getFileName(file.originalPath)}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 font-mono">
                   <div className={`flex items-center ${file.hasCollision ? 'text-red-400' : 'text-primary-500'}`}>
                     <span style={{ paddingLeft: `${file.depth * 20}px` }}></span>
                      {file.isDirectory ? <FolderIcon className="mr-2 flex-shrink-0" /> : <FileIcon className="mr-2 flex-shrink-0" />}
-                    <span className="truncate" title={file.hasCollision ? t('fileTable.collisionWarning') : ''}>{getFileName(file.newPath)}</span>
+                    <span className="truncate" title={file.hasCollision ? t('fileTable.collisionWarning') : file.newPath}>{getFileName(file.newPath)}</span>
                     {file.hasCollision && (
                       <div className="ml-2 relative group flex-shrink-0">
                         <AlertTriangleIcon className="text-red-500" />

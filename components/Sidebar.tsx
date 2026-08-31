@@ -16,6 +16,9 @@ interface SidebarProps {
   providerCode: string;
   onProviderCodeChange: (code: string) => void;
   onOpenVisualBuilder: () => void;
+  musicInfo: { artist: string; album: string; year: string };
+  onMusicInfoChange: (info: { artist: string; album: string; year: string }) => void;
+  detectedMusic: { artist: string; album: string; year: string; count: number; untagged: number } | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -30,6 +33,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onProviderCodeChange,
   onOpenVisualBuilder,
   tmdbApiKeySet,
+  musicInfo,
+  onMusicInfoChange,
+  detectedMusic,
 }) => {
   const [aiPrompt, setAiPrompt] = useState('');
   const [newConventionName, setNewConventionName] = useState('');
@@ -43,7 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  const defaultConventionIds = ['web-safe', 'remove-spaces', 'rename-series', 'jellyfin-movies', 'jellyfin-series'];
+  const defaultConventionIds = ['web-safe', 'remove-spaces', 'rename-series', 'jellyfin-movies', 'jellyfin-series', 'music-clean', 'music-jellyfin'];
   const activeConvention = savedConventions.find(c => c.script === script);
 
   return (
@@ -106,6 +112,45 @@ const Sidebar: React.FC<SidebarProps> = ({
               />
             )}
           </div>
+        </div>
+      )}
+
+      {/* Music override - scraped files often carry useless tags */}
+      {activeConvention?.requiresMusicInfo && (
+        <div className="mb-6 p-4 bg-gray-800 border border-gray-700 rounded-lg animate-fade-in">
+          <h3 className="text-md font-semibold mb-1 text-gray-200">{t('sidebar.musicInfo.title')}</h3>
+          <p className="text-xs text-gray-500 mb-3">{t('sidebar.musicInfo.description')}</p>
+          <div className="space-y-2">
+            <input
+              type="text"
+              value={musicInfo.artist}
+              onChange={(e) => onMusicInfoChange({ ...musicInfo, artist: e.target.value })}
+              placeholder={detectedMusic?.artist || t('sidebar.musicInfo.artist')}
+              className="w-full p-2.5 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
+            />
+            <input
+              type="text"
+              value={musicInfo.album}
+              onChange={(e) => onMusicInfoChange({ ...musicInfo, album: e.target.value })}
+              placeholder={detectedMusic?.album || t('sidebar.musicInfo.album')}
+              className="w-full p-2.5 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
+            />
+            <input
+              type="text"
+              value={musicInfo.year}
+              onChange={(e) => onMusicInfoChange({ ...musicInfo, year: e.target.value })}
+              placeholder={detectedMusic?.year || t('sidebar.musicInfo.year')}
+              className="w-full p-2.5 bg-gray-950 border border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition duration-200 text-gray-200 text-sm"
+            />
+          </div>
+          {detectedMusic && (
+            <p className="text-xs text-gray-500 mt-3">
+              {t('sidebar.musicInfo.detected')
+                .replace('{{artist}}', detectedMusic.artist || '?')
+                .replace('{{album}}', detectedMusic.album || '?')}
+              {detectedMusic.untagged > 0 && ' · ' + t('sidebar.musicInfo.untagged').replace('{{count}}', String(detectedMusic.untagged))}
+            </p>
+          )}
         </div>
       )}
 
