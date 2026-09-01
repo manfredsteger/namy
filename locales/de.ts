@@ -107,7 +107,7 @@ export const de: Translations = {
     scan: {
       seriesDetected: 'TV-Serien erkannt! Rezept "Jellyfin Serien" automatisch ausgewählt.',
       movieDetected: 'Filme erkannt! Rezept "Jellyfin Filme" automatisch ausgewählt.',
-      musicDetected: 'Musik erkannt ({{count}} Dateien)! Rezept "Musik aufräumen" automatisch ausgewählt.',
+      musicDetected: 'Musik erkannt ({{count}} Dateien)! Rezept "Jellyfin Musik" automatisch ausgewählt.',
       readingTags: 'Musik-Tags werden gelesen… {{done}} / {{total}}',
       titleExtracted: 'Möglicher Titel gefunden: '
     },

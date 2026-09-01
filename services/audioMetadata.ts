@@ -267,7 +267,9 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
   // is really just "Best Of".
   if (album && finalArtist && !tagAlbum) {
     const stripped = album.replace(new RegExp('^' + finalArtist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-–—:]?\\s*', 'i'), '');
-    if (tidy(stripped)) album = tidy(stripped);
+    // Nothing left after the artist name means the folder IS the artist
+    // ("Bloodhound Gang/track.m4a") - that is no album at all.
+    if (stripped !== album) album = tidy(stripped);
   }
 
   const title = tagTitle || nameTitle || stem;

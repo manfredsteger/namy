@@ -105,7 +105,7 @@ export const en = {
     scan: {
       seriesDetected: 'TV Series detected! Auto-selected "Jellyfin Series" recipe.',
       movieDetected: 'Movies detected! Auto-selected "Jellyfin Movies" recipe.',
-      musicDetected: 'Music detected ({{count}} files)! Auto-selected the "Clean up music" recipe.',
+      musicDetected: 'Music detected ({{count}} files)! Auto-selected the "Jellyfin Music" recipe.',
       readingTags: 'Reading music tags… {{done}} / {{total}}',
       titleExtracted: 'Found potential title: '
     },

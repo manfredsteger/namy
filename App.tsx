@@ -568,7 +568,9 @@ const App: React.FC = () => {
       // Music wins when the drop is mostly audio: a stray trailer next to an album
       // must not switch the whole batch to the movie recipe.
       if (audioCount > videoCount) {
-          const conv = defaultConventions.find(c => c.id === 'music-clean');
+          // Jellyfin needs an artist folder - a flat "Artist - Title.mp3" would land
+          // loose in the music root, so the Jellyfin recipe is the safe default.
+          const conv = defaultConventions.find(c => c.id === 'music-jellyfin');
           if (conv) {
               setScript(conv.script);
               setScanMessage({ text: t('app.scan.musicDetected').replace('{{count}}', String(audioCount)), type: 'success' });

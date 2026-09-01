@@ -30,6 +30,21 @@ function isEpisodePath(p: string): boolean {
   return /S\d{1,3}[\s._-]?E\d{1,4}/i.test(p) || /(^|\/)Season\s*\d+\//i.test(p);
 }
 
+// Jellyfin builds its music library from the folder tree: a loose "Artist - Title.m4a"
+// in the library root shows up without an artist. If the recipe produced a bare file
+// name, derive the artist folder from the name itself instead of uploading it flat.
+function ensureMusicFolder(relPath: string): string {
+  if (relPath.includes('/')) return relPath;
+  const base = relPath.replace(/\.[^/.]+$/, '');
+  // Drop a leading track number ("01 - ", "01. ") before looking for the artist.
+  const withoutTrack = base.replace(/^\d{1,3}\s*[-.]\s*/, '');
+  const dash = withoutTrack.split(/\s+[-\u2013\u2014]\s+/);
+  const artist = dash.length > 1
+    ? dash[0].replace(/[\\/:*?"<>|]/g, ' ').replace(/\s{2,}/g, ' ').trim()
+    : '';
+  return `${artist || 'Unknown Artist'}/${relPath}`;
+}
+
 function stringSimilarity(a: string, b: string): number {
   const dist = levenshtein(a.toLowerCase(), b.toLowerCase());
   const maxLen = Math.max(a.length, b.length);
@@ -144,7 +159,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
           fileId: f.id,
           originalName: f.originalPath,
           newName: name,
-          targetPath: customPaths[f.id] || f.newPath,
+          targetPath: customPaths[f.id] || (isAudio ? ensureMusicFolder(f.newPath) : f.newPath),
           matchType: 'new' as const,
           kind: (isAudio ? 'music' : isEpisodePath(f.newPath) ? 'episode' : 'movie') as MatchResult['kind'],
           mediaMismatch: mismatch,
