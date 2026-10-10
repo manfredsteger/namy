@@ -74,6 +74,18 @@ interface MatchResult {
   message?: string;
 }
 
+// A File from drag & drop is only a reference to the file on disk. If the file was renamed,
+// moved or replaced since loading (e.g. ZIP unpacked over the folder), the browser fails the
+// XHR with a bare "network error" — read one byte first to tell the two cases apart.
+async function isFileReadable(file: File): Promise<boolean> {
+  try {
+    await file.slice(0, 1).arrayBuffer();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps) {
   const { t } = useTranslation();
   const [remotes, setRemotes] = useState<RemoteConfig[]>([]);
@@ -399,6 +411,12 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
         setUploadStats(s => ({ ...s, error: s.error + 1 }));
         continue;
       }
+
+      if (!(await isFileReadable(file))) {
+        setMatches(prev => prev.map((m, idx) => idx === i ? { ...m, status: 'error', message: t('upload.fileGone') } : m));
+        setUploadStats(s => ({ ...s, error: s.error + 1 }));
+        continue;
+      }
       
       try {
         await new Promise<void>((resolve, reject) => {
@@ -430,7 +448,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
             }
           };
           
-          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.onerror = () => reject(new Error(t('upload.networkError')));
           
           const formData = new FormData();
           formData.append('targetPath', match.targetPath);
@@ -465,6 +483,12 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
       try {
          file = fileEntry.file || (await fileEntry.handle.getFile());
       } catch (e) { return; }
+
+      if (!(await isFileReadable(file))) {
+        setMatches(prev => prev.map((m, idx) => idx === index ? { ...m, status: 'error', message: t('upload.fileGone') } : m));
+        setUploadStats(s => ({ ...s, error: s.error + 1 }));
+        return;
+      }
       
       setMatches(prev => prev.map((m, idx) => idx === index ? { ...m, status: 'uploading', progress: 0 } : m));
       
@@ -490,7 +514,7 @@ export function UploadModal({ files, onClose, tmdbApiKeySet }: UploadModalProps)
             }
           };
           
-          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.onerror = () => reject(new Error(t('upload.networkError')));
           
           const formData = new FormData();
           formData.append('targetPath', match.targetPath);

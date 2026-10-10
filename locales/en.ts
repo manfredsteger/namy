@@ -26,6 +26,8 @@ export const en = {
     skip: 'Skip',
     overwrite: 'Overwrite',
     conflict: 'File already exists',
+    fileGone: 'Local file no longer readable (renamed, moved or replaced since loading) – reload the folder',
+    networkError: 'Namy server unreachable',
     skipped: 'Skipped',
     noFiles: 'No files to upload.',
     done: 'uploaded',

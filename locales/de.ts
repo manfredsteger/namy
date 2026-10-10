@@ -28,6 +28,8 @@ export const de: Translations = {
     skip: 'Überspringen',
     overwrite: 'Überschreiben',
     conflict: 'Datei existiert bereits',
+    fileGone: 'Lokale Datei nicht mehr lesbar (seit dem Laden umbenannt, verschoben oder ersetzt) – Ordner neu laden',
+    networkError: 'Namy-Server nicht erreichbar',
     skipped: 'Übersprungen',
     noFiles: 'Keine Dateien zum Hochladen vorhanden.',
     done: 'hochgeladen',
