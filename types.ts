@@ -14,6 +14,10 @@ export interface AudioTags {
   albumFromTags?: boolean;
   /** False when the file carried no readable tags and everything was guessed. */
   hasTags?: boolean;
+  /** Number of " - " parts the file name was split into (0 = none). */
+  nameParts?: number;
+  /** Artist that two sources agree on - teaches the rest of the batch who is a band. */
+  confirmedArtist?: string;
 }
 
 export interface ProcessedFile {

@@ -31,7 +31,9 @@ export interface EmbeddedTags {
 // is NOT in here — "(Live)", "(Remix)", "(feat. X)", "(Remastered 2011)" — is part
 // of the title and must survive.
 const NOISE = new RegExp('^(?:' + [
-  'official\\s*(?:music\\s*)?video', 'official\\s*audio', 'official\\s*(?:lyrics?|lyric)\\s*video',
+  'official\\s*(?:hd\\s*)?(?:music\\s*)?video', 'official\\s*audio', 'official', 'official\\s*track',
+  'offizielles?\\s*(?:musik)?video', 'offizieller?\\s*(?:audio|clip)',
+  'full\\s*album\\s*stream', '(?:4k|hd)\\s*remaster(?:ed)?', 'official\\s*(?:lyrics?|lyric)\\s*video',
   'official\\s*visualizer', 'official\\s*(?:hd\\s*)?(?:version|clip)', 'music\\s*video',
   'video\\s*oficial', 'videoclip', 'clip\\s*officiel', 'pv', 'mv', 'm/v',
   'lyrics?', 'lyrics?\\s*video', 'with\\s*lyrics', 'letra', 'sub\\s*espa[nñ]ol',
@@ -87,7 +89,43 @@ export function cleanValue(value: string): string {
   let out = value.replace(SITE_PREFIX, '');
   out = stripBracketNoise(out);
   out = stripTrailingNoise(out);
+  // Glued on without any separator: "Painkiller Lyric Video".
+  out = out.replace(/\s+(?:official\s+)?(?:lyrics?|music)\s+video$/i, '');
   return tidy(out);
+}
+
+// Words that give an uploader away as a label or channel rather than a band.
+const CHANNEL_WORDS = /\b(?:records?|recordings|music|musik|vault|entertainment|media|tv|channel|radio|vevo|topic|lyrics?|uploads?)\b/i;
+
+/**
+ * "Earache Records - Skindred - Gimme That Boom": is the first part the uploader?
+ * Labels, all-lowercase user names ("xxdeadrockstarxx", "eni2iguanas") and a
+ * channel that shows up again in the title ("… (Live on 89.3 The Current)") are.
+ */
+function looksLikeChannel(first: string, rest: string): boolean {
+  if (CHANNEL_WORDS.test(first)) return true;
+  if (/^[a-z0-9_.]{5,}$/.test(first.trim())) return true;
+  const k = key(first);
+  return k.length >= 4 && key(rest).includes(k);
+}
+
+/** "Warner Records Vault" -> "Warner Vault", the way it gets glued onto titles. */
+function channelCore(channel: string): string {
+  return tidy(channel.replace(/\b(?:records?|recordings|entertainment|media|channel|tv)\b/gi, ' '));
+}
+
+/** "Blue on Black | Warner Vault" - the channel signed the title as well. */
+function stripChannelTail(title: string, channel: string): string {
+  const core = channel ? channelCore(channel) : '';
+  if (key(core).length < 4) return title;
+  const escaped = core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return tidy(title.replace(new RegExp('\\s*[|\\-–—]?\\s*' + escaped + '$', 'i'), '')) || title;
+}
+
+/** '"Crushed"' -> 'Crushed' (only when the quotes wrap the whole title). */
+function unquote(value: string): string {
+  const m = value.match(/^["“„'](.+)["”“']$/);
+  return m && !/["“”„]/.test(m[1]) ? m[1].trim() : value;
 }
 
 /**
@@ -183,7 +221,14 @@ function sameArtist(a: string, b: string): boolean {
  * of values. Embedded tags win, the file name fills the gaps — and where both
  * describe the same thing, the nicer spelling wins.
  */
-export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): AudioTags {
+export interface BatchContext {
+  /** Comparison keys of artists that other files of the same drop name with certainty. */
+  knownArtists?: Set<string>;
+  /** The parent folder holds tracks of several artists - a playlist, not an album. */
+  folderIsCollection?: boolean;
+}
+
+export function deriveAudioTags(path: string, embedded: EmbeddedTags | null, ctx: BatchContext = {}): AudioTags {
   const segments = path.split('/');
   const filename = segments.pop() || path;
   const folder = segments.length > 0 ? segments[segments.length - 1] : '';
@@ -196,17 +241,43 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
   let nameArtist = '';
   let nameTitle = cleanValue(fromTrack.rest);
   const nameSplit = splitOnDash(nameTitle);
+  let nameParts = 0;
   if (nameSplit) {
-    // "Artist - Album - Title" -> take the last part as the title.
     const inner = splitOnDash(nameSplit.right);
+    nameParts = inner ? 3 : 2;
     nameArtist = nameSplit.left;
     nameTitle = inner ? inner.right : nameSplit.right;
+    if (inner) {
+      // Three parts are either "Artist - Album - Title" or, on YouTube rips,
+      // "Channel - Artist - Title" (sometimes even "Channel - Title - Artist").
+      // Artists the rest of the drop names for sure decide first, then the
+      // look of the first part.
+      const known = (v: string) => !!ctx.knownArtists && ctx.knownArtists.has(key(v));
+      const [a, b, c] = [nameSplit.left, inner.left, inner.right];
+      let channel = '';
+      // "Queen - Bohemian Rhapsody - Remastered 2011": the tail is a version, not the title.
+      const version = /^(?:(?:19|20)\d{2}\s+)?(?:remaster(?:ed)?|live|remix|edit|version|mix|acoustic|demo|mono|stereo|instrumental|radio|bonus|unplugged|single|extended)\b/i;
+      if (version.test(c)) {
+        nameTitle = b + ' - ' + c;
+      } else if (known(a)) {
+        // genuine "Artist - Album - Title"
+      } else if (known(b)) {
+        channel = a; nameArtist = b; nameTitle = c;
+      } else if (known(c)) {
+        channel = a; nameArtist = c; nameTitle = b;
+      } else if (looksLikeChannel(a, b + ' ' + c)) {
+        channel = a; nameArtist = b; nameTitle = c;
+      }
+      if (channel) nameTitle = stripChannelTail(nameTitle, channel);
+    }
   }
 
   // --- from the folder ----------------------------------------------------
   const grandFolder = segments.length > 1 ? segments[segments.length - 2] : '';
   let folderArtist = '';
-  let folderAlbum = cleanValue(folder);
+  // A playlist folder ("Susi Playlist" with ten different bands) is neither the
+  // album nor the artist of its tracks - only tags may name an album then.
+  let folderAlbum = ctx.folderIsCollection ? '' : cleanValue(folder);
   const folderYear = (folderAlbum.match(/\((19|20)\d{2}\)/) || [])[0];
   folderAlbum = tidy(folderAlbum.replace(/\((19|20)\d{2}\)/, ''));
   const folderSplit = splitOnDash(folderAlbum);
@@ -214,7 +285,7 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
     // "Pink Floyd - The Wall"
     folderArtist = folderSplit.left;
     folderAlbum = folderSplit.right;
-  } else if (grandFolder) {
+  } else if (grandFolder && folderAlbum) {
     // The classic "Artist/Album/track.mp3" layout.
     folderArtist = cleanValue(grandFolder);
   }
@@ -229,15 +300,28 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
   let titleArtist = '';
   let folderConfirmsTitleArtist = false;
   const titleSplit = splitOnDash(tagTitle);
-  if (titleSplit) {
+  const knownName = (v: string) => !!v && !!ctx.knownArtists && ctx.knownArtists.has(key(v));
+  // YouTube rips put the uploading channel into the artist tag and the real
+  // "Artist - Title" into the title: "Earache Records" / "Skindred - Gimme That Boom".
+  const tagIsChannel = !!titleSplit && !!tagArtist && !tagAlbumArtist && !sameArtist(tagArtist, titleSplit.left) && (
+    looksLikeChannel(tagArtist, tagTitle) ||
+    (!knownName(tagArtist) && (knownName(titleSplit.left) || knownName(titleSplit.right)))
+  );
+  if (titleSplit && tagIsChannel && knownName(titleSplit.right) && !knownName(titleSplit.left)) {
+    // Even the other way round: "Little Girl - H-Blockx".
+    titleArtist = titleSplit.right;
+    tagTitle = titleSplit.left;
+    folderConfirmsTitleArtist = true;
+  } else if (titleSplit) {
     titleArtist = titleSplit.left;
     // If the folder names the same artist, the prefix is genuine and the artist
     // tag is just some uploader's channel ("TheTechnique") that must not win.
     folderConfirmsTitleArtist = key(titleArtist).length >= 4 &&
-      (sameArtist(titleArtist, folderArtist) || key(folder).includes(key(titleArtist)));
+      (sameArtist(titleArtist, folderArtist) || (!ctx.folderIsCollection && key(folder).includes(key(titleArtist))));
     const knownArtist = tagAlbumArtist || tagArtist || nameArtist || folderArtist;
     // Drop the prefix only when it really is the artist — otherwise "Sunday
     // Bloody Sunday - Live" would lose its first half.
+    folderConfirmsTitleArtist = folderConfirmsTitleArtist || tagIsChannel;
     if (!knownArtist || sameArtist(titleArtist, knownArtist) || folderConfirmsTitleArtist) {
       tagTitle = titleSplit.right;
     } else {
@@ -272,7 +356,15 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
     if (stripped !== album) album = tidy(stripped);
   }
 
-  const title = tagTitle || nameTitle || stem;
+  const title = unquote(stripChannelTail(tagTitle, tagIsChannel ? tagArtist : '')) || unquote(nameTitle) || stem;
+
+  // Which artist is certain enough to teach the rest of the batch? Tag and title
+  // agree, a plain tag without a competing title prefix, or "Artist - Title" as
+  // the whole file name of an untagged file.
+  const confirmedArtist =
+    (tagArtist && titleSplit && !tagIsChannel && sameArtist(tagArtist, titleSplit.left)) ? tagArtist :
+    (tagArtist && !titleSplit && !looksLikeChannel(tagArtist, tagTitle)) ? tagArtist :
+    (!tagArtist && nameParts === 2) ? nameArtist : '';
 
   const track = embedded?.track || fromTrack.track;
   const embeddedYear = embedded?.year || '';
@@ -291,8 +383,47 @@ export function deriveAudioTags(path: string, embedded: EmbeddedTags | null): Au
     // it is the upload year, which has nothing to do with the release.
     year: (embedded?.album ? embeddedYear : derivedYear) || undefined,
     albumFromTags: !!embedded?.album,
+    nameParts,
+    confirmedArtist: confirmedArtist || undefined,
     hasTags: !!(embedded && (embedded.title || embedded.artist || embedded.album)),
   };
+}
+
+/**
+ * Derive a whole drop at once. Some answers only exist at batch level: which
+ * names are artists for sure (plain "Artist - Title" files, artist tags) and
+ * which folders mix several artists and are therefore playlists, not albums.
+ */
+export function deriveAudioBatch(entries: { id: string; path: string; embedded: EmbeddedTags | null }[]): Record<string, AudioTags> {
+  const firstPass = entries.map(e => ({ e, tags: deriveAudioTags(e.path, e.embedded) }));
+
+  const knownArtists = new Set<string>();
+  for (const { tags } of firstPass) {
+    if (tags.confirmedArtist) knownArtists.add(key(tags.confirmedArtist));
+  }
+  knownArtists.delete('');
+
+  const secondPass = entries.map(e => ({ e, tags: deriveAudioTags(e.path, e.embedded, { knownArtists }) }));
+
+  const folderOf = (p: string) => p.split('/').slice(0, -1).join('/');
+  const artistsPerFolder = new Map<string, Set<string>>();
+  for (const { e, tags } of secondPass) {
+    const folder = folderOf(e.path);
+    const artistKey = key(tags.albumArtist || tags.artist || '');
+    if (!folder || !artistKey) continue;
+    if (!artistsPerFolder.has(folder)) artistsPerFolder.set(folder, new Set());
+    artistsPerFolder.get(folder)!.add(artistKey);
+  }
+
+  const result: Record<string, AudioTags> = {};
+  for (const { e, tags } of secondPass) {
+    const artists = artistsPerFolder.get(folderOf(e.path));
+    const folderIsCollection = !!artists && artists.size > 1;
+    result[e.id] = folderIsCollection
+      ? deriveAudioTags(e.path, e.embedded, { knownArtists, folderIsCollection })
+      : tags;
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

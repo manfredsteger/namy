@@ -15,7 +15,7 @@ import { Server } from 'lucide-react';
 import RecipeBuilderModal from './components/RecipeBuilderModal';
 import { DownloadIcon, SettingsIcon, SparklesIcon } from './components/icons';
 import { ProcessedFile, Convention, Rule, AudioTags } from './types';
-import { isAudioPath, readEmbeddedTags, deriveAudioTags } from './services/audioMetadata';
+import { isAudioPath, readEmbeddedTags, deriveAudioBatch, EmbeddedTags } from './services/audioMetadata';
 import { generateRenameScript } from './services/geminiService';
 import { useTranslation } from './hooks/useTranslation';
 import { generateScriptFromRules } from './utils';
@@ -375,7 +375,12 @@ const App: React.FC = () => {
     }
     setTagProgress({ done: 0, total: audio.length });
 
-    const collected: Record<string, AudioTags> = {};
+    // Raw tags per file; the derivation runs over the whole batch, because only
+    // the batch knows which folders are playlists and which names are artists.
+    const embeddedById: Record<string, EmbeddedTags | null> = {};
+    const derive = () => deriveAudioBatch(
+      audio.filter(f => f.id in embeddedById).map(f => ({ id: f.id, path: f.originalPath, embedded: embeddedById[f.id] })),
+    );
     let cursor = 0;
     let done = 0;
 
@@ -390,11 +395,11 @@ const App: React.FC = () => {
           // Unreadable file - deriveAudioTags falls back to name and folder.
         }
         if (run !== tagRun.current) return;   // a newer drop took over
-        collected[f.id] = deriveAudioTags(f.originalPath, embedded);
+        embeddedById[f.id] = embedded;
         done++;
         // Flush in batches so the preview fills in while a long list is still reading.
         if (done % 20 === 0) {
-          setAudioTags({ ...collected });
+          setAudioTags(derive());
           setTagProgress({ done, total: audio.length });
         }
       }
@@ -402,7 +407,7 @@ const App: React.FC = () => {
 
     await Promise.all(Array.from({ length: Math.min(6, audio.length) }, worker));
     if (run !== tagRun.current) return;
-    setAudioTags({ ...collected });
+    setAudioTags(derive());
     setTagProgress(null);
   }, []);
 
